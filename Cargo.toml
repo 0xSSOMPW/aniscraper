@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+chrono = "0.4.38"
 diesel = { version = "2.2.3", features = ["postgres"] }
+dotenvy = "0.15.7"
 reqwest = { version = "0.12.7", features = ["json"] }
 scraper = "0.20.0"
 serde = { version = "1.0.209", features = ["derive"] }
