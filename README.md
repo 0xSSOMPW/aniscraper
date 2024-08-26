@@ -1,1 +1,3 @@
-# ani-rust-api
+# ani-rust-scraper
+
+## Work in Progress
