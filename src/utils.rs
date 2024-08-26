@@ -1,7 +1,6 @@
 use crate::{
     env::EnvVar,
     error::AniRustError,
-    handle_error,
     proxy::{get_random_proxy, Proxy},
 };
 use core::fmt;
@@ -35,10 +34,9 @@ pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, AniRustErr
 }
 
 pub fn parse_usize(s: &str) -> Result<usize, AniRustError> {
-    handle_error!(s
-        .to_string()
+    s.to_string()
         .parse::<usize>()
-        .map_err(AniRustError::ParseIntError))
+        .map_err(AniRustError::ParseIntError)
 }
 
 pub fn stringify<T: fmt::Display>(input: T) -> String {

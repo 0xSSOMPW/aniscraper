@@ -1,3 +1,6 @@
+use chrono::{DateTime, Utc};
+use reqwest::blocking::Client;
+use serde_json::json;
 use std::error::Error as StdError;
 use std::fmt;
 
@@ -72,4 +75,44 @@ impl AniRustError {
             AniRustError::ParseIntError(_) => EnvVar::UTILS_ERROR_WEBHOOK.get_config(),
         }
     }
+}
+
+impl Drop for AniRustError {
+    fn drop(&mut self) {
+        let webhook_url = self.webhook_url();
+        let error_message = format!("{}", self);
+        send_error_to_webhook(&webhook_url, &error_message);
+    }
+}
+
+fn send_error_to_webhook(webhook_url: &str, error_message: &str) {
+    if webhook_url.is_empty() {
+        return;
+    }
+
+    let webhook_url = webhook_url.to_string();
+    let error_message = error_message.to_string();
+
+    tokio::task::spawn_blocking(move || {
+        // Ensure the webhook URL is not empty
+        if webhook_url.is_empty() {
+            return;
+        }
+
+        let client = Client::new();
+        let now: DateTime<Utc> = Utc::now();
+        let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let content = format!(
+            r#"{{"Timestamp": "{}", "Error": "{}"}}"#,
+            timestamp, error_message
+        );
+
+        let payload = json!({
+            "content": content,
+        });
+
+        // Perform the blocking HTTP request
+        let _res = client.post(&webhook_url).json(&payload).send();
+    });
 }

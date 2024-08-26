@@ -1,6 +1,5 @@
 mod env;
 mod error;
-mod macros;
 mod model;
 mod proxy;
 mod schema;
