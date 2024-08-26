@@ -1,33 +1,23 @@
-mod env;
-mod error;
-mod model;
-mod proxy;
-mod schema;
-mod utils;
-
 // src/lib.rs
 
-/// This function adds two numbers together.
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
+mod env;
+mod error;
+mod hianime;
+mod model;
+mod proxy;
+mod utils;
+
+use crate::hianime::HiAnimeRust;
+
+#[derive(Debug)]
+pub struct AniRust {
+    pub HiAnime: HiAnimeRust,
 }
 
-/// This function multiplies two numbers together.
-pub fn multiply(a: i32, b: i32) -> i32 {
-    a * b
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_add() {
-        assert_eq!(add(2, 3), 5);
-    }
-
-    #[test]
-    fn test_multiply() {
-        assert_eq!(multiply(2, 3), 6);
+impl AniRust {
+    pub async fn new() -> Self {
+        AniRust {
+            HiAnime: HiAnimeRust::new().await,
+        }
     }
 }
