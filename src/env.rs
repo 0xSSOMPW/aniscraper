@@ -7,9 +7,7 @@ use dotenvy::dotenv;
 
 #[derive(Debug)]
 pub enum EnvVar {
-    DATABASE_URL,
     MAX_RETRIES_ATTEMPTS,
-    DATABASE_ERROR_WEBHOOK,
     REQWEST_ERROR_WEBHOOK,
     NO_PROXIES_AVAILABLE_ERROR_WEBHOOK,
     FAILED_TO_FETCH_AFTER_RETRIES_ERROR_WEBHOOK,
@@ -17,15 +15,14 @@ pub enum EnvVar {
     HTTP_URL,
     SOCK4_URL,
     SOCK5_URL,
+    HIANIME_DOMAINS,
 }
 
 impl EnvVar {
     // Convert EnvVar to the corresponding environment variable key
     fn as_str(&self) -> &'static str {
         match self {
-            EnvVar::DATABASE_URL => "DATABASE_URL",
             EnvVar::MAX_RETRIES_ATTEMPTS => "MAX_RETRIES_ATTEMPTS",
-            EnvVar::DATABASE_ERROR_WEBHOOK => "DATABASE_ERROR_WEBHOOK",
             EnvVar::REQWEST_ERROR_WEBHOOK => "REQWEST_ERROR_WEBHOOK",
             EnvVar::NO_PROXIES_AVAILABLE_ERROR_WEBHOOK => "NO_PROXIES_AVAILABLE_ERROR_WEBHOOK",
             EnvVar::FAILED_TO_FETCH_AFTER_RETRIES_ERROR_WEBHOOK => {
@@ -35,6 +32,7 @@ impl EnvVar {
             EnvVar::HTTP_URL => "HTTP_URL",
             EnvVar::SOCK4_URL => "SOCK4_URL",
             EnvVar::SOCK5_URL => "SOCK5_URL",
+            EnvVar::HIANIME_DOMAINS => "HIANIME_DOMAINS",
         }
     }
 
@@ -45,19 +43,14 @@ impl EnvVar {
 
         match env::var(key) {
             Ok(val) => val,
-            Err(_) => match self {
-                EnvVar::DATABASE_URL => panic!("DATABASE_URL is not set"),
-                _ => String::new(),
-            },
+            Err(_) => String::new(),
         }
     }
 }
 
 #[derive(Debug)]
 pub enum AppConfig {
-    DatabaseUrl(String),
     MaxRetriesAttempts(usize),
-    DatabaseErrorWebhook(Option<String>),
     ReqwestErrorWebhook(Option<String>),
     UtilsErrorWebhook(Option<String>),
     NoProxiesAvailable(Option<String>),
@@ -65,16 +58,13 @@ pub enum AppConfig {
     HttpUrl(String),
     Sock4Url(String),
     Sock5Url(String),
+    HianimeDomains(String),
 }
 
 impl fmt::Display for AppConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppConfig::DatabaseUrl(url) => write!(f, "Database URL: {}", url),
             AppConfig::MaxRetriesAttempts(no) => write!(f, "Max Retries Attempts: {}", no),
-            AppConfig::DatabaseErrorWebhook(webhook) => {
-                write!(f, "Database Error Webhook: {:?}", webhook)
-            }
             AppConfig::ReqwestErrorWebhook(webhook) => {
                 write!(f, "Reqwest Error Webhook: {:?}", webhook)
             }
@@ -99,6 +89,9 @@ impl fmt::Display for AppConfig {
             }
             AppConfig::Sock5Url(url) => {
                 write!(f, "Sock5 proxy Url: {}", url)
+            }
+            AppConfig::HianimeDomains(domains) => {
+                write!(f, "HiAnime domains: {}", domains)
             }
         }
     }
