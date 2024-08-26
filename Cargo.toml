@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
-diesel = { version = "2.2.3", features = ["postgres"] }
 dotenvy = "0.15.7"
+lazy_static = "1.5.0"
 rand = "0.8.5"
 reqwest = { version = "0.12.7", features = ["json", "blocking"] }
 scraper = "0.20.0"
