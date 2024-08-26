@@ -13,7 +13,7 @@ mod utils;
 
 #[tokio::main]
 async fn main() {
-    println!("{:?}", parse_usize("1s"));
+    println!("{:?}", parse_usize("1"));
     // if let Err(e) = parse_usize("ss") {
     //     let error_mess = format!("{}", e);
     //     AniRustError::send_error_to_webhook(&e.webhook_url(), &error_mess).await;

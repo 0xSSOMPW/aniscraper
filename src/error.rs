@@ -1,6 +1,3 @@
-use chrono::{DateTime, Utc};
-use reqwest::Client;
-use serde_json::json;
 use std::error::Error as StdError;
 use std::fmt;
 
@@ -74,29 +71,5 @@ impl AniRustError {
             }
             AniRustError::ParseIntError(_) => EnvVar::UTILS_ERROR_WEBHOOK.get_config(),
         }
-    }
-
-    pub async fn send_error_to_webhook(webhook_url: &str, error_message: &str) {
-        println!("0");
-        if webhook_url.is_empty() {
-            return;
-        }
-
-        let client = Client::new();
-        let now: DateTime<Utc> = Utc::now();
-        let timestamp = now.format("%a %b %e %T %Y").to_string();
-
-        let content = format!(
-            "{{\"timestamp\": \"{}\", \"error\": \"{}\"}}",
-            timestamp, error_message
-        );
-
-        let payload = json!({
-            "content": content,
-        });
-
-        // Perform the async HTTP request
-        let response = client.post(webhook_url).json(&payload).send().await;
-        println!("{:?}", response);
     }
 }
