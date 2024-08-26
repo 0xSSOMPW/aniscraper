@@ -17,6 +17,10 @@ lazy_static! {
         "#main-content .block_area_home:nth-of-type(1) .tab-content .film_list-wrap .flw-item"
     )
     .unwrap();
+    static ref TOP_UPCOMING_SELECTOR: Selector = Selector::parse(
+        "#main-content .block_area_home:nth-of-type(3) .tab-content .film_list-wrap .flw-item"
+    )
+    .unwrap();
 }
 
 #[derive(Debug)]
@@ -29,6 +33,7 @@ pub struct HiAnimeRust {
 pub struct HomeInfo {
     pub trending: Vec<MinimalAnime>,
     pub latest_episodes: Vec<Anime>,
+    pub top_upcoming_animes: Vec<Anime>,
 }
 
 impl HiAnimeRust {
@@ -85,10 +90,12 @@ impl HiAnimeRust {
         }
 
         let latest_episodes = extract_anime_data(&document, &LATEST_EPISODES_SELECTOR);
+        let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
 
         Ok(HomeInfo {
             trending,
             latest_episodes,
+            top_upcoming_animes,
         })
     }
 }
