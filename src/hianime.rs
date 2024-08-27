@@ -7,7 +7,7 @@ use crate::{
     error::AniRustError,
     model::{Anime, MinimalAnime},
     proxy::{load_proxies, Proxy},
-    utils::get_curl,
+    utils::{get_curl, opt_box_error_vec_to_string},
 };
 
 lazy_static! {
@@ -63,11 +63,10 @@ impl HiAnimeRust {
     }
 
     pub async fn scrape_home(&self) -> Result<HomeInfo, AniRustError> {
-        let mut error = None;
+        let mut error_vec = vec![];
         let mut curl = String::new();
 
         for domain in &self.domains {
-            println!("{}", &domain);
             let url = format!("{}/home", domain);
 
             match get_curl(&url, &self.proxies).await {
@@ -76,45 +75,19 @@ impl HiAnimeRust {
                     break;
                 }
                 Err(e) => {
-                    eprintln!("Error for domain {}: {:?}", domain, e);
-                    error = Some(e);
+                    error_vec.push(Some(e));
                 }
             }
         }
 
-        if let Some(e) = error {
-            return Err(e);
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
         }
 
         let document = Html::parse_document(&curl);
 
-        let mut trending = vec![];
-
-        for element in document.select(&TRENDING_SELECTOR) {
-            let id = element
-                .select(&Selector::parse(".item .film-poster").unwrap())
-                .next()
-                .and_then(|e| e.value().attr("href"))
-                .map(|href| href.trim_start_matches('/'))
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-
-            let title = element
-                .select(&Selector::parse(".item .number .film-title.dynamic-name").unwrap())
-                .next()
-                .map(|e| e.text().collect::<String>().trim().to_string())
-                .unwrap_or_default();
-
-            let image = element
-                .select(&Selector::parse(".item .film-poster .film-poster-img").unwrap())
-                .next()
-                .and_then(|e| e.value().attr("data-src"))
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default();
-
-            trending.push(MinimalAnime { id, title, image });
-        }
-
+        let trending = extract_minimal_anime(&document, &TRENDING_SELECTOR);
         let latest_episodes = extract_anime_data(&document, &LATEST_EPISODES_SELECTOR);
         let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
         let genres = extract_genres(&document, &GENRES_SELECTOR);
@@ -192,7 +165,39 @@ fn extract_anime_data(document: &Html, selector: &Selector) -> Vec<Anime> {
             image,
         });
     }
+
     res
+}
+
+fn extract_minimal_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
+    let mut trending = vec![];
+
+    for element in document.select(&TRENDING_SELECTOR) {
+        let id = element
+            .select(&Selector::parse(".item .film-poster").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(|href| href.trim_start_matches('/'))
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let title = element
+            .select(&Selector::parse(".item .number .film-title.dynamic-name").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let image = element
+            .select(&Selector::parse(".item .film-poster .film-poster-img").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("data-src"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        trending.push(MinimalAnime { id, title, image });
+    }
+
+    trending
 }
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
