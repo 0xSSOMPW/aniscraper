@@ -3,16 +3,25 @@ use crate::{
     error::AniRustError,
     proxy::{get_random_proxy, Proxy},
 };
+use brotli::Decompressor;
 use core::fmt;
-use reqwest::Client;
+use flate2::read::{GzDecoder, ZlibDecoder};
+use reqwest::{header, Client};
+use std::error::Error;
+use std::io::Read;
 use std::time::Duration;
 
 /// Fetches data from the specified URL.
 ///
 /// Returns the HTML content of the page as a string.
-pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, AniRustError> {
+pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Error>> {
     let max_attempts = parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config())?;
     let timeout_duration = Duration::from_secs(5);
+
+    // Ensure proxies are not empty
+    if proxies.is_empty() {
+        return Err(Box::new(AniRustError::NoProxiesAvailable));
+    }
 
     for _ in 0..max_attempts {
         if let Some(proxy) = get_random_proxy(proxies) {
@@ -21,16 +30,51 @@ pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, AniRustErr
                 .timeout(timeout_duration)
                 .build()?;
 
-            let response = client.get(url).send().await?;
-            if response.status().is_success() {
-                return Ok(response.text().await?);
-            }
-        } else {
-            return Err(AniRustError::NoProxiesAvailable);
+            let response = client
+                .get(url)
+                .header(header::USER_AGENT, &EnvVar::USER_AGENT_HEADER.get_config())
+                .header(
+                    header::ACCEPT_ENCODING,
+                    &EnvVar::ACCEPT_ENCODING_HEADER.get_config(),
+                )
+                .header(header::ACCEPT, &EnvVar::ACCEPT_HEADER.get_config())
+                .send()
+                .await?;
+
+            let res_headers = response.headers().to_owned();
+            let content_encoding = res_headers
+                .get(header::CONTENT_ENCODING)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+
+            let res_bytes = response.bytes().await?;
+            let body = match content_encoding {
+                "gzip" => {
+                    let mut decoded = Vec::new();
+                    let mut gz = GzDecoder::new(res_bytes.as_ref());
+                    gz.read_to_end(&mut decoded)?;
+                    String::from_utf8(decoded)?
+                }
+                "deflate" => {
+                    let mut zf = ZlibDecoder::new(res_bytes.as_ref());
+                    let mut decoded = Vec::new();
+                    zf.read_to_end(&mut decoded)?;
+                    String::from_utf8(decoded)?
+                }
+                "br" => {
+                    let mut decompressor = Decompressor::new(res_bytes.as_ref(), 4096);
+                    let mut decoded = Vec::new();
+                    decompressor.read_to_end(&mut decoded)?;
+                    String::from_utf8(decoded)?
+                }
+                _ => String::from_utf8(res_bytes.to_vec())?,
+            };
+
+            return Ok(body);
         }
     }
 
-    Err(AniRustError::FailedToFetchAfterRetries)
+    Err(Box::new(AniRustError::NoProxiesAvailable))
 }
 
 pub fn parse_usize(s: &str) -> Result<usize, AniRustError> {
@@ -41,4 +85,12 @@ pub fn parse_usize(s: &str) -> Result<usize, AniRustError> {
 
 pub fn stringify<T: fmt::Display>(input: T) -> String {
     format!("{}", input)
+}
+
+pub fn opt_box_error_vec_to_string(error_vec: Vec<Option<Box<dyn Error>>>) -> String {
+    error_vec
+        .iter()
+        .filter_map(|opt_error| opt_error.as_ref().map(|e| e.to_string()))
+        .collect::<Vec<String>>()
+        .join(", ")
 }
