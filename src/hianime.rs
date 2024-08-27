@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use scraper::{Html, Selector};
+use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -21,6 +21,10 @@ lazy_static! {
         "#main-content .block_area_home:nth-of-type(3) .tab-content .film_list-wrap .flw-item"
     )
     .unwrap();
+    static ref GENRES_SELECTOR: Selector = Selector::parse(
+        "#main-sidebar .block_area.block_area_sidebar.block_area-genres .sb-genre-list li"
+    )
+    .unwrap();
 }
 
 #[derive(Debug)]
@@ -34,6 +38,7 @@ pub struct HomeInfo {
     pub trending: Vec<MinimalAnime>,
     pub latest_episodes: Vec<Anime>,
     pub top_upcoming_animes: Vec<Anime>,
+    pub genres: Vec<String>,
 }
 
 impl HiAnimeRust {
@@ -58,8 +63,29 @@ impl HiAnimeRust {
     }
 
     pub async fn scrape_home(&self) -> Result<HomeInfo, AniRustError> {
-        let url = format!("{}/home", self.domains[0]);
-        let curl = get_curl(&url, &self.proxies).await?;
+        let mut error = None;
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            println!("{}", &domain);
+            let url = format!("{}/home", domain);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("Error for domain {}: {:?}", domain, e);
+                    error = Some(e);
+                }
+            }
+        }
+
+        if let Some(e) = error {
+            return Err(e);
+        }
+
         let document = Html::parse_document(&curl);
 
         let mut trending = vec![];
@@ -91,11 +117,13 @@ impl HiAnimeRust {
 
         let latest_episodes = extract_anime_data(&document, &LATEST_EPISODES_SELECTOR);
         let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
+        let genres = extract_genres(&document, &GENRES_SELECTOR);
 
         Ok(HomeInfo {
             trending,
             latest_episodes,
             top_upcoming_animes,
+            genres,
         })
     }
 }
@@ -165,4 +193,19 @@ fn extract_anime_data(document: &Html, selector: &Selector) -> Vec<Anime> {
         });
     }
     res
+}
+
+fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
+    let mut genres = vec![];
+
+    for element in document.select(selector) {
+        let text = element.text().collect::<String>().trim().to_string();
+        if text.is_empty() {
+            genres.push(String::new())
+        } else {
+            genres.push(text);
+        }
+    }
+
+    genres
 }
