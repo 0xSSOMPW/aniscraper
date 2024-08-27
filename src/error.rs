@@ -19,6 +19,8 @@ pub enum AniRustError {
     ParseIntError(std::num::ParseIntError),
     /// No domain exists
     NoDomainExists(String),
+    /// all rest errors
+    UnknownError(String),
 }
 
 // Implement Display for AniRustError
@@ -30,6 +32,7 @@ impl fmt::Display for AniRustError {
             AniRustError::FailedToFetchAfterRetries => write!(f, "Failed to fetch after retries"),
             AniRustError::ParseIntError(err) => write!(f, "Failed to parse int error: {}", err),
             AniRustError::NoDomainExists(site) => write!(f, "No domain added for: {}", site),
+            AniRustError::UnknownError(err) => write!(f, "Std error occured: {}", err),
         }
     }
 }
@@ -38,6 +41,13 @@ impl fmt::Display for AniRustError {
 impl From<reqwest::Error> for AniRustError {
     fn from(err: reqwest::Error) -> Self {
         AniRustError::ReqwestError(err)
+    }
+}
+
+// Implement `From<Box<dyn StdError>>` for `CustomError`
+impl From<Box<dyn StdError>> for AniRustError {
+    fn from(err: Box<dyn StdError>) -> Self {
+        AniRustError::UnknownError(err.to_string())
     }
 }
 
@@ -50,6 +60,7 @@ impl StdError for AniRustError {
             AniRustError::FailedToFetchAfterRetries => None,
             AniRustError::ParseIntError(err) => Some(err),
             AniRustError::NoDomainExists(_) => None,
+            AniRustError::UnknownError(_) => None,
         }
     }
 }
@@ -66,6 +77,7 @@ impl AniRustError {
             }
             AniRustError::ParseIntError(_) => EnvVar::UTILS_ERROR_WEBHOOK.get_config(),
             AniRustError::NoDomainExists(_) => String::new(),
+            AniRustError::UnknownError(_) => EnvVar::UNKNOWN_ERROR_WEBHOOK.get_config(),
         }
     }
 }
