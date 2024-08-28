@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     env::EnvVar,
     error::AniRustError,
-    model::{Anime, MinimalAnime},
+    model::{Anime, MinimalAnime, SpotlightAnime},
     proxy::{load_proxies, Proxy},
     utils::{get_curl, opt_box_error_vec_to_string},
 };
@@ -25,6 +25,8 @@ lazy_static! {
         "#main-sidebar .block_area.block_area_sidebar.block_area-genres .sb-genre-list li"
     )
     .unwrap();
+    static ref SPOTLIGHT_SELECTOR: Selector =
+        Selector::parse("#slider .swiper-wrapper .swiper-slide").unwrap();
 }
 
 #[derive(Debug)]
@@ -38,6 +40,7 @@ pub struct HomeInfo {
     pub trending: Vec<MinimalAnime>,
     pub latest_episodes: Vec<Anime>,
     pub top_upcoming_animes: Vec<Anime>,
+    pub spotlight_animes: Vec<SpotlightAnime>,
     pub genres: Vec<String>,
 }
 
@@ -90,12 +93,14 @@ impl HiAnimeRust {
         let trending = extract_minimal_anime(&document, &TRENDING_SELECTOR);
         let latest_episodes = extract_anime_data(&document, &LATEST_EPISODES_SELECTOR);
         let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
+        let spotlight_animes = extract_spotlight_anime_data(&document, &SPOTLIGHT_SELECTOR);
         let genres = extract_genres(&document, &GENRES_SELECTOR);
 
         Ok(HomeInfo {
             trending,
             latest_episodes,
             top_upcoming_animes,
+            spotlight_animes,
             genres,
         })
     }
@@ -163,6 +168,107 @@ fn extract_anime_data(document: &Html, selector: &Selector) -> Vec<Anime> {
             duration,
             rating,
             image,
+        });
+    }
+
+    res
+}
+
+fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<SpotlightAnime> {
+    let mut res = vec![];
+
+    for element in document.select(selector) {
+        let id = element
+            .select(&Selector::parse(".deslide-item-content .desi-buttons a").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(|s| s.trim_start_matches('/').to_string())
+            .unwrap_or_default();
+
+        let title = element
+            .select(
+                &Selector::parse(".deslide-item-content .desi-head-title.dynamic-name").unwrap(),
+            )
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let rank = element
+            .select(&Selector::parse(".deslide-item-content .desi-sub-text").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default()
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.trim_start_matches('#').parse::<u32>().ok())
+            .unwrap_or_default();
+
+        let image = element
+            .select(&Selector::parse(".deslide-cover .deslide-cover-img .film-poster-img").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+            .unwrap_or_default();
+
+        let description = element
+            .select(&Selector::parse(".deslide-item-content .desi-description").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let extra_info: Vec<String> = element
+            .select(&Selector::parse(".deslide-item-content .sc-detail .scd-item").unwrap())
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .collect();
+
+        let eps = extra_info
+            .get(4)
+            .and_then(|s| {
+                s.split_whitespace()
+                    .map(|s| s.parse().ok())
+                    .collect::<Vec<_>>()
+                    .get(2)
+                    .copied()
+            })
+            .flatten()
+            .unwrap_or_default();
+
+        let subs = extra_info
+            .get(4)
+            .and_then(|s| {
+                s.split_whitespace()
+                    .map(|s| s.parse().ok())
+                    .collect::<Vec<_>>()
+                    .get(0)
+                    .copied()
+            })
+            .flatten()
+            .unwrap_or_default();
+
+        let dubs = extra_info
+            .get(4)
+            .and_then(|s| {
+                s.split_whitespace()
+                    .map(|s| s.parse().ok())
+                    .collect::<Vec<_>>()
+                    .get(1)
+                    .copied()
+            })
+            .flatten()
+            .unwrap_or_default();
+
+        res.push(SpotlightAnime {
+            id,
+            title,
+            rank,
+            image,
+            description,
+            subs,
+            dubs,
+            eps,
+            duration: extra_info.get(1).cloned().unwrap_or_default(),
+            quality: extra_info.get(3).cloned().unwrap_or_default(),
+            category: extra_info.get(0).cloned().unwrap_or_default(),
+            released_day: extra_info.get(2).cloned().unwrap_or_default(),
         });
     }
 
