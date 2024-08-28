@@ -34,3 +34,11 @@ pub struct SpotlightAnime {
     pub released_day: String,
     pub quality: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FeaturedAnime {
+    pub top_airing_animes: Vec<MinimalAnime>,
+    pub most_popular_animes: Vec<MinimalAnime>,
+    pub most_favorite_animes: Vec<MinimalAnime>,
+    pub latest_completed_animes: Vec<MinimalAnime>,
+}
