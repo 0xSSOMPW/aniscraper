@@ -27,6 +27,8 @@ lazy_static! {
     .unwrap();
     static ref SPOTLIGHT_SELECTOR: Selector =
         Selector::parse("#slider .swiper-wrapper .swiper-slide").unwrap();
+    static ref TOP_AIRING_SELECTOR: Selector =
+        Selector::parse("#anime-featured .row div:nth-of-type(1) .anif-block-ul ul li").unwrap();
 }
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ pub struct HomeInfo {
     pub latest_episodes: Vec<Anime>,
     pub top_upcoming_animes: Vec<Anime>,
     pub spotlight_animes: Vec<SpotlightAnime>,
+    pub top_airing_animes: Vec<MinimalAnime>,
     pub genres: Vec<String>,
 }
 
@@ -94,6 +97,7 @@ impl HiAnimeRust {
         let latest_episodes = extract_anime_data(&document, &LATEST_EPISODES_SELECTOR);
         let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
         let spotlight_animes = extract_spotlight_anime_data(&document, &SPOTLIGHT_SELECTOR);
+        let top_airing_animes = extract_top_airing_anime(&document, &TOP_AIRING_SELECTOR);
         let genres = extract_genres(&document, &GENRES_SELECTOR);
 
         Ok(HomeInfo {
@@ -101,6 +105,7 @@ impl HiAnimeRust {
             latest_episodes,
             top_upcoming_animes,
             spotlight_animes,
+            top_airing_animes,
             genres,
         })
     }
@@ -276,6 +281,37 @@ fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<Spo
 }
 
 fn extract_minimal_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
+    let mut trending = vec![];
+
+    for element in document.select(&TRENDING_SELECTOR) {
+        let id = element
+            .select(&Selector::parse(".item .film-poster").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(|href| href.trim_start_matches('/'))
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+
+        let title = element
+            .select(&Selector::parse(".item .number .film-title.dynamic-name").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let image = element
+            .select(&Selector::parse(".item .film-poster .film-poster-img").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("data-src"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        trending.push(MinimalAnime { id, title, image });
+    }
+
+    trending
+}
+
+fn extract_top_airing_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
     let mut trending = vec![];
 
     for element in document.select(&TRENDING_SELECTOR) {
