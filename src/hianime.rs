@@ -135,258 +135,253 @@ impl HiAnimeRust {
 }
 
 fn extract_anime_data(document: &Html, selector: &Selector) -> Vec<Anime> {
-    let mut res = vec![];
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .select(&Selector::parse(".film-name .dynamic-name").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default();
 
-    for element in document.select(selector) {
-        let id = element
-            .select(&Selector::parse(".film-name .dynamic-name").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("href"))
-            .map(|s| s.trim_start_matches('/').to_string())
-            .unwrap_or_default();
+            let title = element
+                .select(&Selector::parse(".film-name .dynamic-name").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let title = element
-            .select(&Selector::parse(".film-name .dynamic-name").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let subs = element
+                .select(&Selector::parse(".film-poster .tick-sub").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let subs = element
-            .select(&Selector::parse(".film-poster .tick-sub").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let dubs = element
+                .select(&Selector::parse(".film-poster .tick-dub").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let dubs = element
-            .select(&Selector::parse(".film-poster .tick-dub").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let eps = element
+                .select(&Selector::parse(".film-poster .tick-eps").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let eps = element
-            .select(&Selector::parse(".film-poster .tick-eps").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let duration = element
+                .select(&Selector::parse(".fd-infor .fdi-duration").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let duration = element
-            .select(&Selector::parse(".fd-infor .fdi-duration").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let rating = element
+                .select(&Selector::parse(".film-poster .tick-rate").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let rating = element
-            .select(&Selector::parse(".film-poster .tick-rate").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let image = element
+                .select(&Selector::parse(".film-poster .film-poster-img").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+                .unwrap_or_default();
 
-        let image = element
-            .select(&Selector::parse(".film-poster .film-poster-img").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
-            .unwrap_or_default();
-
-        res.push(Anime {
-            id,
-            title,
-            subs,
-            dubs,
-            eps,
-            duration,
-            rating,
-            image,
-        });
-    }
-
-    res
+            Anime {
+                id,
+                title,
+                subs,
+                dubs,
+                eps,
+                duration,
+                rating,
+                image,
+            }
+        })
+        .collect()
 }
 
 fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<SpotlightAnime> {
-    let mut res = vec![];
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .select(&Selector::parse(".deslide-item-content .desi-buttons a").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default();
 
-    for element in document.select(selector) {
-        let id = element
-            .select(&Selector::parse(".deslide-item-content .desi-buttons a").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("href"))
-            .map(|s| s.trim_start_matches('/').to_string())
-            .unwrap_or_default();
+            let title = element
+                .select(
+                    &Selector::parse(".deslide-item-content .desi-head-title.dynamic-name")
+                        .unwrap(),
+                )
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let title = element
-            .select(
-                &Selector::parse(".deslide-item-content .desi-head-title.dynamic-name").unwrap(),
-            )
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let rank = element
+                .select(&Selector::parse(".deslide-item-content .desi-sub-text").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default()
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.trim_start_matches('#').parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let rank = element
-            .select(&Selector::parse(".deslide-item-content .desi-sub-text").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default()
-            .split_whitespace()
-            .next()
-            .and_then(|s| s.trim_start_matches('#').parse::<u32>().ok())
-            .unwrap_or_default();
+            let image = element
+                .select(
+                    &Selector::parse(".deslide-cover .deslide-cover-img .film-poster-img").unwrap(),
+                )
+                .next()
+                .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+                .unwrap_or_default();
 
-        let image = element
-            .select(&Selector::parse(".deslide-cover .deslide-cover-img .film-poster-img").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
-            .unwrap_or_default();
+            let description = element
+                .select(&Selector::parse(".deslide-item-content .desi-description").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let description = element
-            .select(&Selector::parse(".deslide-item-content .desi-description").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let extra_info: Vec<String> = element
+                .select(&Selector::parse(".deslide-item-content .sc-detail .scd-item").unwrap())
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .collect();
 
-        let extra_info: Vec<String> = element
-            .select(&Selector::parse(".deslide-item-content .sc-detail .scd-item").unwrap())
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .collect();
+            let eps = extra_info
+                .get(4)
+                .and_then(|s| {
+                    s.split_whitespace()
+                        .map(|s| s.parse().ok())
+                        .collect::<Vec<_>>()
+                        .get(2)
+                        .copied()
+                })
+                .flatten()
+                .unwrap_or_default();
 
-        let eps = extra_info
-            .get(4)
-            .and_then(|s| {
-                s.split_whitespace()
-                    .map(|s| s.parse().ok())
-                    .collect::<Vec<_>>()
-                    .get(2)
-                    .copied()
-            })
-            .flatten()
-            .unwrap_or_default();
+            let subs = extra_info
+                .get(4)
+                .and_then(|s| {
+                    s.split_whitespace()
+                        .map(|s| s.parse().ok())
+                        .collect::<Vec<_>>()
+                        .get(0)
+                        .copied()
+                })
+                .flatten()
+                .unwrap_or_default();
 
-        let subs = extra_info
-            .get(4)
-            .and_then(|s| {
-                s.split_whitespace()
-                    .map(|s| s.parse().ok())
-                    .collect::<Vec<_>>()
-                    .get(0)
-                    .copied()
-            })
-            .flatten()
-            .unwrap_or_default();
+            let dubs = extra_info
+                .get(4)
+                .and_then(|s| {
+                    s.split_whitespace()
+                        .map(|s| s.parse().ok())
+                        .collect::<Vec<_>>()
+                        .get(1)
+                        .copied()
+                })
+                .flatten()
+                .unwrap_or_default();
 
-        let dubs = extra_info
-            .get(4)
-            .and_then(|s| {
-                s.split_whitespace()
-                    .map(|s| s.parse().ok())
-                    .collect::<Vec<_>>()
-                    .get(1)
-                    .copied()
-            })
-            .flatten()
-            .unwrap_or_default();
-
-        res.push(SpotlightAnime {
-            id,
-            title,
-            rank,
-            image,
-            description,
-            subs,
-            dubs,
-            eps,
-            duration: extra_info.get(1).cloned().unwrap_or_default(),
-            quality: extra_info.get(3).cloned().unwrap_or_default(),
-            category: extra_info.get(0).cloned().unwrap_or_default(),
-            released_day: extra_info.get(2).cloned().unwrap_or_default(),
-        });
-    }
-
-    res
+            SpotlightAnime {
+                id,
+                title,
+                rank,
+                image,
+                description,
+                subs,
+                dubs,
+                eps,
+                duration: extra_info.get(1).cloned().unwrap_or_default(),
+                quality: extra_info.get(3).cloned().unwrap_or_default(),
+                category: extra_info.get(0).cloned().unwrap_or_default(),
+                released_day: extra_info.get(2).cloned().unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 fn extract_minimal_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
-    let mut trending = vec![];
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .select(&Selector::parse(".item .film-poster").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|href| href.trim_start_matches('/'))
+                .map(|s| s.to_string())
+                .unwrap_or_default();
 
-    for element in document.select(&TRENDING_SELECTOR) {
-        let id = element
-            .select(&Selector::parse(".item .film-poster").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("href"))
-            .map(|href| href.trim_start_matches('/'))
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+            let title = element
+                .select(&Selector::parse(".item .number .film-title.dynamic-name").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let title = element
-            .select(&Selector::parse(".item .number .film-title.dynamic-name").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let image = element
+                .select(&Selector::parse(".item .film-poster .film-poster-img").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("data-src"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        let image = element
-            .select(&Selector::parse(".item .film-poster .film-poster-img").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("data-src"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-
-        trending.push(MinimalAnime { id, title, image });
-    }
-
-    trending
+            MinimalAnime { id, title, image }
+        })
+        .collect()
 }
 
 fn extract_featured_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
-    let mut trending = vec![];
+    let id_selector = Selector::parse(".film-detail .film-name .dynamic-name").unwrap();
+    let image_selector = Selector::parse(".film-poster a .film-poster-img").unwrap();
 
-    for element in document.select(selector) {
-        let id = element
-            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("href"))
-            .map(|href| href.trim_start_matches('/'))
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .select(&id_selector)
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|href| href.trim_start_matches('/').to_string())
+                .unwrap_or_default();
 
-        let title = element
-            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let title = element
+                .select(&id_selector)
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let image = element
-            .select(&Selector::parse(".film-poster a .film-poster-img").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("data-src"))
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+            let image = element
+                .select(&image_selector)
+                .next()
+                .and_then(|e| e.value().attr("data-src"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
 
-        trending.push(MinimalAnime { id, title, image });
-    }
-
-    trending
+            MinimalAnime { id, title, image }
+        })
+        .collect()
 }
 
 fn extract_top_10(document: &Html, selector: &Selector) -> Top10PeriodRankedAnime {
-    let mut day = Vec::new();
-    let mut week = Vec::new();
-    let mut month = Vec::new();
-
-    for element in document.select(selector) {
-        if let Some(id) = element.value().attr("id") {
-            let period_type = id.split('-').last().unwrap_or("").trim();
-
-            match period_type {
-                "week" => {
-                    week = extract_top_10_by_period_type(document, "week");
+    let (day, week, month) = document
+        .select(selector)
+        .filter_map(|element| element.value().attr("id"))
+        .map(|id| id.split('-').last().unwrap_or("").trim().to_string())
+        .fold(
+            (vec![], vec![], vec![]),
+            |(mut day, mut week, mut month), period_type| {
+                match period_type.as_str() {
+                    "week" => week.extend(extract_top_10_by_period_type(document, "week")),
+                    "month" => month.extend(extract_top_10_by_period_type(document, "month")),
+                    _ => day.extend(extract_top_10_by_period_type(document, "day")),
                 }
-                "month" => {
-                    month = extract_top_10_by_period_type(document, "month");
-                }
-                _ => {
-                    day = extract_top_10_by_period_type(document, "day");
-                }
-            }
-        }
-    }
+                (day, week, month)
+            },
+        );
 
     Top10PeriodRankedAnime { day, week, month }
 }
@@ -395,78 +390,76 @@ fn extract_top_10_by_period_type(document: &Html, period_type: &str) -> Vec<Top1
     let selector_format = format!("#top-viewed-{} ul li", period_type);
     let selector = Selector::parse(&selector_format).unwrap();
 
-    let mut res = vec![];
+    document
+        .select(&selector)
+        .map(|element| {
+            let id = element
+                .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default();
 
-    for element in document.select(&selector) {
-        let id = element
-            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("href"))
-            .map(|s| s.trim_start_matches('/').to_string())
-            .unwrap_or_default();
+            let title = element
+                .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
 
-        let title = element
-            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .unwrap_or_default();
+            let rank = element
+                .select(&Selector::parse(".film-number span").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .and_then(|e| e.parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let rank = element
-            .select(&Selector::parse(".film-number span").unwrap())
-            .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
-            .and_then(|e| e.parse::<u32>().ok())
-            .unwrap_or_default();
+            let subs = element
+                .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-sub").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let subs = element
-            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-sub").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let dubs = element
+                .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-dub").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let dubs = element
-            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-dub").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let eps = element
+                .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-eps").unwrap())
+                .next()
+                .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+                .unwrap_or_default();
 
-        let eps = element
-            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-eps").unwrap())
-            .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
-            .unwrap_or_default();
+            let image = element
+                .select(&Selector::parse(".film-poster .film-poster-img").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+                .unwrap_or_default();
 
-        let image = element
-            .select(&Selector::parse(".film-poster .film-poster-img").unwrap())
-            .next()
-            .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
-            .unwrap_or_default();
-
-        res.push(Top10Anime {
-            id,
-            title,
-            image,
-            subs,
-            dubs,
-            eps,
-            rank,
+            Top10Anime {
+                id,
+                title,
+                image,
+                subs,
+                dubs,
+                eps,
+                rank,
+            }
         })
-    }
-
-    res
+        .collect()
 }
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
-    let mut genres = vec![];
-
-    for element in document.select(selector) {
-        let text = element.text().collect::<String>().trim().to_string();
-        if text.is_empty() {
-            genres.push(String::new())
-        } else {
-            genres.push(text);
-        }
-    }
-
-    genres
+    document
+        .select(selector)
+        .map(|element| {
+            let text = element.text().collect::<String>().trim().to_string();
+            if text.is_empty() {
+                String::new()
+            } else {
+                text
+            }
+        })
+        .collect()
 }
