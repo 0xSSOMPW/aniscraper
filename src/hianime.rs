@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     env::EnvVar,
     error::AniRustError,
-    model::{Anime, FeaturedAnime, MinimalAnime, SpotlightAnime},
+    model::{
+        Anime, FeaturedAnime, MinimalAnime, SpotlightAnime, Top10Anime, Top10PeriodRankedAnime,
+    },
     proxy::{load_proxies, Proxy},
     utils::{get_curl, opt_box_error_vec_to_string},
 };
@@ -35,6 +37,8 @@ lazy_static! {
         Selector::parse("#anime-featured .row div:nth-of-type(3) .anif-block-ul ul li").unwrap();
     static ref LATEST_COMPLETED_SELECTOR: Selector =
         Selector::parse("#anime-featured .row div:nth-of-type(4) .anif-block-ul ul li").unwrap();
+    static ref TOP_10_SELECTOR: Selector =
+        Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
 }
 
 #[derive(Debug)]
@@ -50,6 +54,7 @@ pub struct HomeInfo {
     pub top_upcoming_animes: Vec<Anime>,
     pub spotlight_animes: Vec<SpotlightAnime>,
     pub featured: FeaturedAnime,
+    pub top_10_animes: Top10PeriodRankedAnime,
     pub genres: Vec<String>,
 }
 
@@ -104,6 +109,7 @@ impl HiAnimeRust {
         let top_upcoming_animes = extract_anime_data(&document, &TOP_UPCOMING_SELECTOR);
         let spotlight_animes = extract_spotlight_anime_data(&document, &SPOTLIGHT_SELECTOR);
         let genres = extract_genres(&document, &GENRES_SELECTOR);
+        let top_10_animes = extract_top_10(&document, &TOP_10_SELECTOR);
 
         let top_airing_animes = extract_featured_anime(&document, &TOP_AIRING_SELECTOR);
         let most_popular_animes = extract_featured_anime(&document, &MOST_POPULAR_SELECTOR);
@@ -122,6 +128,7 @@ impl HiAnimeRust {
             top_upcoming_animes,
             spotlight_animes,
             featured,
+            top_10_animes,
             genres,
         })
     }
@@ -356,6 +363,97 @@ fn extract_featured_anime(document: &Html, selector: &Selector) -> Vec<MinimalAn
     }
 
     trending
+}
+
+fn extract_top_10(document: &Html, selector: &Selector) -> Top10PeriodRankedAnime {
+    let mut day = Vec::new();
+    let mut week = Vec::new();
+    let mut month = Vec::new();
+
+    for element in document.select(selector) {
+        if let Some(id) = element.value().attr("id") {
+            let period_type = id.split('-').last().unwrap_or("").trim();
+
+            match period_type {
+                "week" => {
+                    week = extract_top_10_by_period_type(document, "week");
+                }
+                "month" => {
+                    month = extract_top_10_by_period_type(document, "month");
+                }
+                _ => {
+                    day = extract_top_10_by_period_type(document, "day");
+                }
+            }
+        }
+    }
+
+    Top10PeriodRankedAnime { day, week, month }
+}
+
+fn extract_top_10_by_period_type(document: &Html, period_type: &str) -> Vec<Top10Anime> {
+    let selector_format = format!("#top-viewed-{} ul li", period_type);
+    let selector = Selector::parse(&selector_format).unwrap();
+
+    let mut res = vec![];
+
+    for element in document.select(&selector) {
+        let id = element
+            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(|s| s.trim_start_matches('/').to_string())
+            .unwrap_or_default();
+
+        let title = element
+            .select(&Selector::parse(".film-detail .film-name .dynamic-name").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let rank = element
+            .select(&Selector::parse(".film-number span").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .and_then(|e| e.parse::<u32>().ok())
+            .unwrap_or_default();
+
+        let subs = element
+            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-sub").unwrap())
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        let dubs = element
+            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-dub").unwrap())
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        let eps = element
+            .select(&Selector::parse(".film-detail .fd-infor .tick-item.tick-eps").unwrap())
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        let image = element
+            .select(&Selector::parse(".film-poster .film-poster-img").unwrap())
+            .next()
+            .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+            .unwrap_or_default();
+
+        res.push(Top10Anime {
+            id,
+            title,
+            image,
+            subs,
+            dubs,
+            eps,
+            rank,
+        })
+    }
+
+    res
 }
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
