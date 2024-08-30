@@ -33,6 +33,7 @@ lazy_static! {
         Selector::parse("#anime-featured .row div:nth-of-type(1) .anif-block-ul ul li").unwrap();
     static ref TOP_10_SELECTOR: Selector =
         Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
+    static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -123,6 +124,36 @@ impl HiAnimeRust {
             top_10_animes,
             genres,
         })
+    }
+
+    pub async fn scrape_atoz(&self, page_no: u32) -> Result<Vec<Anime>, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            let url = format!("{}/az-list?page={}", domain, page_no);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+
+        let animes = extract_anime_data(&document, &A_TO_Z_SELECTOR);
+
+        Ok(animes)
     }
 }
 
@@ -260,7 +291,7 @@ fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<Spo
                     s.split_whitespace()
                         .map(|s| s.parse().ok())
                         .collect::<Vec<_>>()
-                        .get(0)
+                        .first()
                         .copied()
                 })
                 .flatten()
