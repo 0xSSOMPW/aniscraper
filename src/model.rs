@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MinimalAnime {
     pub id: String,
     pub title: String,
     pub image: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Anime {
     pub id: String,
     pub title: String,
@@ -19,7 +19,7 @@ pub struct Anime {
     pub image: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SpotlightAnime {
     pub id: String,
     pub title: String,
@@ -35,7 +35,7 @@ pub struct SpotlightAnime {
     pub quality: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Top10Anime {
     pub id: String,
     pub title: String,
@@ -46,7 +46,7 @@ pub struct Top10Anime {
     pub image: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FeaturedAnime {
     pub top_airing_animes: Vec<MinimalAnime>,
     pub most_popular_animes: Vec<MinimalAnime>,
@@ -54,7 +54,7 @@ pub struct FeaturedAnime {
     pub latest_completed_animes: Vec<MinimalAnime>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Top10PeriodRankedAnime {
     pub day: Vec<Top10Anime>,
     pub week: Vec<Top10Anime>,
