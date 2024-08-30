@@ -29,14 +29,8 @@ lazy_static! {
     .unwrap();
     static ref SPOTLIGHT_SELECTOR: Selector =
         Selector::parse("#slider .swiper-wrapper .swiper-slide").unwrap();
-    static ref TOP_AIRING_SELECTOR: Selector =
+    static ref FEATURED_SELECTOR: Selector =
         Selector::parse("#anime-featured .row div:nth-of-type(1) .anif-block-ul ul li").unwrap();
-    static ref MOST_POPULAR_SELECTOR: Selector =
-        Selector::parse("#anime-featured .row div:nth-of-type(2) .anif-block-ul ul li").unwrap();
-    static ref MOST_FAVORITE_SELECTOR: Selector =
-        Selector::parse("#anime-featured .row div:nth-of-type(3) .anif-block-ul ul li").unwrap();
-    static ref LATEST_COMPLETED_SELECTOR: Selector =
-        Selector::parse("#anime-featured .row div:nth-of-type(4) .anif-block-ul ul li").unwrap();
     static ref TOP_10_SELECTOR: Selector =
         Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
 }
@@ -111,10 +105,8 @@ impl HiAnimeRust {
         let genres = extract_genres(&document, &GENRES_SELECTOR);
         let top_10_animes = extract_top_10(&document, &TOP_10_SELECTOR);
 
-        let top_airing_animes = extract_featured_anime(&document, &TOP_AIRING_SELECTOR);
-        let most_popular_animes = extract_featured_anime(&document, &MOST_POPULAR_SELECTOR);
-        let most_favorite_animes = extract_featured_anime(&document, &MOST_FAVORITE_SELECTOR);
-        let latest_completed_animes = extract_featured_anime(&document, &LATEST_COMPLETED_SELECTOR);
+        let (top_airing_animes, most_popular_animes, most_favorite_animes, latest_completed_animes) =
+            extract_featured_anime(&document, &FEATURED_SELECTOR);
         let featured = FeaturedAnime {
             top_airing_animes,
             most_popular_animes,
@@ -334,11 +326,19 @@ fn extract_minimal_anime(document: &Html, selector: &Selector) -> Vec<MinimalAni
         .collect()
 }
 
-fn extract_featured_anime(document: &Html, selector: &Selector) -> Vec<MinimalAnime> {
+fn extract_featured_anime(
+    document: &Html,
+    selector: &Selector,
+) -> (
+    Vec<MinimalAnime>,
+    Vec<MinimalAnime>,
+    Vec<MinimalAnime>,
+    Vec<MinimalAnime>,
+) {
     let id_selector = Selector::parse(".film-detail .film-name .dynamic-name").unwrap();
     let image_selector = Selector::parse(".film-poster a .film-poster-img").unwrap();
 
-    document
+    let res: Vec<MinimalAnime> = document
         .select(selector)
         .map(|element| {
             let id = element
@@ -363,7 +363,19 @@ fn extract_featured_anime(document: &Html, selector: &Selector) -> Vec<MinimalAn
 
             MinimalAnime { id, title, image }
         })
-        .collect()
+        .collect();
+
+    let top_airing_animes = res[0..5].to_vec();
+    let most_popular_animes = res[5..10].to_vec();
+    let most_favorite_animes = res[10..15].to_vec();
+    let latest_completed_animes = res[15..20].to_vec();
+
+    (
+        top_airing_animes,
+        most_popular_animes,
+        most_favorite_animes,
+        latest_completed_animes,
+    )
 }
 
 fn extract_top_10(document: &Html, selector: &Selector) -> Top10PeriodRankedAnime {
