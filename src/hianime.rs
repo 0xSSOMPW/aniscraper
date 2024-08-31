@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     env::{self, EnvVar, SecretConfig},
@@ -35,6 +36,7 @@ lazy_static! {
         Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
     static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
     static ref A_TO_Z_NAVIGATION_SELECTOR: Selector = Selector::parse("#main-wrapper > div > div.page-az-wrap > section > div.tab-content > div > div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
+    static ref ABOUT_ANIME_SELECTOR: Selector = Selector::parse("#ani_detail .ani_detail-stage .container .anis-content").unwrap();
 }
 
 #[derive(Debug)]
@@ -60,6 +62,24 @@ pub struct AtoZ {
     pub has_next_page: bool,
     pub total_pages: u32,
     pub animes: Vec<Anime>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AboutAnime {
+    pub id: String,
+    pub mal_id: u32,
+    pub al_id: u32,
+    pub anime_id: u32,
+    pub title: String,
+    pub description: String,
+    pub image: String,
+    pub rating: String,
+    pub category: String,
+    pub duration: String,
+    pub quality: String,
+    pub subs: u32,
+    pub dubs: u32,
+    pub eps: u32,
 }
 
 impl HiAnimeRust {
@@ -184,6 +204,34 @@ impl HiAnimeRust {
             total_pages,
             animes,
         })
+    }
+
+    pub async fn scrape_about_anime(&self, id: &str) -> Result<AboutAnime, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            let url = format!("{}/{}", domain, id);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+        let about = extract_anime_about_info(&document, &ABOUT_ANIME_SELECTOR);
+        Ok(about)
     }
 }
 
@@ -521,6 +569,138 @@ fn extract_top_10_by_period_type(document: &Html, period_type: &str) -> Vec<Top1
             }
         })
         .collect()
+}
+
+fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime {
+    let play_button_selector = Selector::parse(".anisc-detail .film-buttons a.btn-play").unwrap();
+    let name_selector = Selector::parse(".anisc-detail .film-name.dynamic-name").unwrap();
+    let rating_selector = Selector::parse(".film-stats .tick .tick-pg").unwrap();
+    let quality_selector = Selector::parse(".film-stats .tick .tick-quality").unwrap();
+    let subs_selector = Selector::parse(".film-stats .tick .tick-sub").unwrap();
+    let dubs_selector = Selector::parse(".film-stats .tick .tick-dub").unwrap();
+    let eps_selector = Selector::parse(".film-stats .tick .tick-eps").unwrap();
+    let image_selector = Selector::parse(".anisc-poster .film-poster .film-poster-img").unwrap();
+    let description_selector = Selector::parse(".anisc-detail .film-description .text").unwrap();
+    let tick_selector = Selector::parse(".film-stats .tick").unwrap();
+    let json_script_selector = Selector::parse("#syncData").unwrap();
+
+    let mut about_anime = AboutAnime {
+        id: String::new(),
+        mal_id: 0,
+        anime_id: 0,
+        al_id: 0,
+        title: String::new(),
+        description: String::new(),
+        image: String::new(),
+        category: String::new(),
+        rating: String::new(),
+        quality: String::new(),
+        duration: String::new(),
+        subs: 0,
+        dubs: 0,
+        eps: 0,
+    };
+
+    document.select(selector).for_each(|element| {
+        about_anime.id = element
+            .select(&play_button_selector)
+            .next()
+            .and_then(|e| e.value().attr("href"))
+            .map(|s| s.split('/').last().unwrap_or("").to_string())
+            .unwrap_or_default();
+
+        about_anime.title = element
+            .select(&name_selector)
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        about_anime.rating = element
+            .select(&rating_selector)
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        about_anime.quality = element
+            .select(&quality_selector)
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        about_anime.subs = element
+            .select(&subs_selector)
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        about_anime.dubs = element
+            .select(&dubs_selector)
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        about_anime.eps = element
+            .select(&eps_selector)
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+
+        about_anime.image = element
+            .select(&image_selector)
+            .next()
+            .and_then(|e| e.value().attr("src").map(|s| s.to_string()))
+            .unwrap_or_default();
+
+        about_anime.description = element
+            .select(&description_selector)
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        if let Some(tick) = element.select(&tick_selector).next() {
+            let text = tick
+                .text()
+                .collect::<String>()
+                .replace('\n', " ")
+                .trim()
+                .to_string();
+
+            let mut parts = text.split_whitespace().rev();
+            about_anime.category = parts.nth(1).unwrap_or("").to_string();
+            about_anime.duration = parts.next().unwrap_or("").to_string();
+        }
+
+        let json_text = document
+            .select(&json_script_selector)
+            .next()
+            .map(|script| script.text().collect::<String>())
+            .unwrap_or_default();
+
+        if let Ok(json) = serde_json::from_str::<Value>(&json_text) {
+            about_anime.anime_id = json
+                .get("anime_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .parse::<u32>()
+                .unwrap_or_default();
+
+            about_anime.mal_id = json
+                .get("mal_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .parse::<u32>()
+                .unwrap_or_default();
+
+            about_anime.al_id = json
+                .get("anilist_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .parse::<u32>()
+                .unwrap_or_default();
+        }
+    });
+
+    about_anime
 }
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
