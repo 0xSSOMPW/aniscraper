@@ -3,7 +3,7 @@ use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    env::EnvVar,
+    env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     model::{
         Anime, FeaturedAnime, MinimalAnime, SpotlightAnime, Top10Anime, Top10PeriodRankedAnime,
@@ -41,6 +41,7 @@ lazy_static! {
 pub struct HiAnimeRust {
     domains: Vec<String>,
     proxies: Vec<Proxy>,
+    secret: Option<SecretConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -62,9 +63,16 @@ pub struct AtoZ {
 }
 
 impl HiAnimeRust {
-    pub async fn new() -> Self {
-        let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
+    pub async fn new(secret: Option<SecretConfig>) -> Self {
+        let mut secret_lock = env::SECRET.lock().unwrap();
+        *secret_lock = secret.clone();
 
+        let secret_clone = secret_lock.clone();
+        // Release the lock.
+        drop(secret_lock);
+
+        // let domain_list = String::from("a,b,c,d,e");
+        let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
         let domains: Vec<String> = if domain_list.is_empty() {
             vec!["https://aniwatchtv.to".to_string()]
         } else {
@@ -76,10 +84,17 @@ impl HiAnimeRust {
 
         let proxies = match load_proxies().await {
             Ok(p) => p,
-            Err(_) => Vec::new(),
+            Err(e) => {
+                eprintln!("Failed to load proxies: {:?}", e);
+                Vec::new()
+            }
         };
 
-        HiAnimeRust { domains, proxies }
+        HiAnimeRust {
+            domains,
+            proxies,
+            secret: secret_clone,
+        }
     }
 
     pub async fn scrape_home(&self) -> Result<HomeInfo, AniRustError> {
