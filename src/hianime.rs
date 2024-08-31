@@ -3,7 +3,7 @@ use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    env::EnvVar,
+    env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     model::{
         Anime, FeaturedAnime, MinimalAnime, SpotlightAnime, Top10Anime, Top10PeriodRankedAnime,
@@ -39,6 +39,7 @@ lazy_static! {
 pub struct HiAnimeRust {
     domains: Vec<String>,
     proxies: Vec<Proxy>,
+    secret: Option<SecretConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,9 +54,31 @@ pub struct HomeInfo {
 }
 
 impl HiAnimeRust {
-    pub async fn new() -> Self {
-        let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
+    pub async fn new(secrett: Option<SecretConfig>) -> Self {
+        let secret = Some(env::SecretConfig::new(
+        "100".to_string(),
+        "https://discord.com/api/webhooks/1277497411505487935/pqGKuBa4fencj5uVAsfcHaQKpuXk391I03DzVHOhPw_Rw4dZv7pl3Dk39qFaolGYnDz1".to_string(),
+        "https://discord.com/api/webhooks/1277497510805504031/Pj6tbA6P-RluHxr2Br_ar5gpWrVjN1f1ZV3na_hTBSJ8efJ-Jw5YcnK0sBpWf4STiq0L".to_string(),
+        "https://discord.com/api/webhooks/1277497614090371072/O87AnBMg6S_OkNAB8OMsbBSSV_HYGux-pfgvTi-mOta-89qLeZBBGA7SZV0GgWuL8LYZ".to_string(),
+        "https://discord.com/api/webhooks/1277497689554288711/B6V7cr2OLpsDlbF9tI9q9b7UQB6f7_JEOi9vkPwzvwA2WEcWa2ZnWfudxHcHh6U1k35C".to_string(),
+        "https://discord.com/api/webhooks/1277497237697593344/W_ds_hy5R8ZJwSEP9QYfl0TIkIbD_5wvTekyOlNUYkciChfS4TCeOWajqal74bGvIxpl".to_string(),
+        "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt".to_string(),
+        "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks4.txt".to_string(),
+        "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt".to_string(),
+        "https://aniwatchtv.to,https://hianime.to,https://hianime.nz,https://hianime.sx".to_string(),
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36".to_string(),
+        "gzip, deflate, br, zstd".to_string(),
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7".to_string(),
+    ));
+        let mut secret_lock = env::SECRET.lock().unwrap();
+        *secret_lock = secret.clone();
 
+        let secret_clone = secret_lock.clone();
+        // Release the lock.
+        drop(secret_lock);
+
+        // let domain_list = String::from("a,b,c,d,e");
+        let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
         let domains: Vec<String> = if domain_list.is_empty() {
             vec!["https://aniwatchtv.to".to_string()]
         } else {
@@ -67,10 +90,17 @@ impl HiAnimeRust {
 
         let proxies = match load_proxies().await {
             Ok(p) => p,
-            Err(_) => Vec::new(),
+            Err(e) => {
+                eprintln!("Failed to load proxies: {:?}", e);
+                Vec::new()
+            }
         };
 
-        HiAnimeRust { domains, proxies }
+        HiAnimeRust {
+            domains,
+            proxies,
+            secret: secret_clone,
+        }
     }
 
     pub async fn scrape_home(&self) -> Result<HomeInfo, AniRustError> {

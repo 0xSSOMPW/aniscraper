@@ -40,11 +40,9 @@ pub async fn load_proxies() -> Result<Vec<Proxy>, AniRustError> {
     let sock4_url = EnvVar::SOCK4_URL.get_config();
     let http_url = EnvVar::HTTP_URL.get_config();
 
-    let (sock5_proxies, sock4_proxies, http_proxies) = tokio::try_join!(
-        fetch_proxy_list(&sock5_url),
-        fetch_proxy_list(&sock4_url),
-        fetch_proxy_list(&http_url)
-    )?;
+    let sock5_proxies = fetch_proxy_list(&sock5_url).await?;
+    let sock4_proxies = fetch_proxy_list(&sock4_url).await?;
+    let http_proxies = fetch_proxy_list(&http_url).await?;
 
     let mut all_proxies = Vec::new();
     all_proxies.extend(sock5_proxies);
