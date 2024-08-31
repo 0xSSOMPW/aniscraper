@@ -34,6 +34,7 @@ lazy_static! {
     static ref TOP_10_SELECTOR: Selector =
         Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
     static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
+    static ref A_TO_Z_NAVIGATION_SELECTOR: Selector = Selector::parse("#main-wrapper > div > div.page-az-wrap > section > div.tab-content > div > div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
 }
 
 #[derive(Debug)]
@@ -42,7 +43,7 @@ pub struct HiAnimeRust {
     proxies: Vec<Proxy>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HomeInfo {
     pub trending: Vec<MinimalAnime>,
     pub latest_episodes: Vec<Anime>,
@@ -51,6 +52,13 @@ pub struct HomeInfo {
     pub featured: FeaturedAnime,
     pub top_10_animes: Top10PeriodRankedAnime,
     pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AtoZ {
+    pub has_next_page: bool,
+    pub total_pages: u32,
+    pub animes: Vec<Anime>,
 }
 
 impl HiAnimeRust {
@@ -126,7 +134,7 @@ impl HiAnimeRust {
         })
     }
 
-    pub async fn scrape_atoz(&self, page_no: u32) -> Result<Vec<Anime>, AniRustError> {
+    pub async fn scrape_atoz(&self, page_no: u32) -> Result<AtoZ, AniRustError> {
         let mut error_vec = vec![];
         let mut curl = String::new();
 
@@ -153,7 +161,14 @@ impl HiAnimeRust {
 
         let animes = extract_anime_data(&document, &A_TO_Z_SELECTOR);
 
-        Ok(animes)
+        let total_pages = get_last_page_no_of_atoz_list(&document);
+        let has_next_page = page_no != total_pages;
+
+        Ok(AtoZ {
+            has_next_page,
+            total_pages,
+            animes,
+        })
     }
 }
 
@@ -320,7 +335,7 @@ fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<Spo
                 eps,
                 duration: extra_info.get(1).cloned().unwrap_or_default(),
                 quality: extra_info.get(3).cloned().unwrap_or_default(),
-                category: extra_info.get(0).cloned().unwrap_or_default(),
+                category: extra_info.first().cloned().unwrap_or_default(),
                 released_day: extra_info.get(2).cloned().unwrap_or_default(),
             }
         })
@@ -505,4 +520,15 @@ fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
             }
         })
         .collect()
+}
+
+// Function to extract the last page number from the response
+pub fn get_last_page_no_of_atoz_list(document: &Html) -> u32 {
+    document
+        .select(&A_TO_Z_NAVIGATION_SELECTOR)
+        .last()
+        .and_then(|element| element.value().attr("href"))
+        .and_then(|href| href.split('=').last())
+        .and_then(|page_str| page_str.parse::<u32>().ok())
+        .unwrap_or(212)
 }
