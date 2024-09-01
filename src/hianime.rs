@@ -88,6 +88,7 @@ pub struct AboutAnime {
     pub mal_score: String,
     pub studios: Vec<String>,
     pub producers: Vec<String>,
+    pub genres: Vec<String>,
 }
 
 impl HiAnimeRust {
@@ -595,6 +596,10 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         "#ani_detail .ani_detail-stage .container .anis-content .anisc-info .item-title",
     )
     .unwrap();
+    let genres_selector = Selector::parse(
+        "#ani_detail .ani_detail-stage .container .anis-content .anisc-info .item-list",
+    )
+    .unwrap();
 
     let mut about_anime = AboutAnime {
         id: String::new(),
@@ -619,6 +624,7 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         mal_score: String::new(),
         studios: vec![],
         producers: vec![],
+        genres: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -756,6 +762,14 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
             }
             _ => {}
         }
+    });
+
+    document.select(&genres_selector).for_each(|element| {
+        about_anime.genres.extend(
+            element
+                .select(&Selector::parse("a").unwrap())
+                .map(|e| e.text().collect::<String>().trim().to_string()),
+        );
     });
 
     about_anime
