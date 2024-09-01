@@ -6,9 +6,6 @@ use serde_json::Value;
 use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
-    model::{
-        Anime, FeaturedAnime, MinimalAnime, SpotlightAnime, Top10Anime, Top10PeriodRankedAnime,
-    },
     proxy::{load_proxies, Proxy},
     utils::{get_curl, opt_box_error_vec_to_string},
 };
@@ -37,6 +34,7 @@ lazy_static! {
     static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
     static ref A_TO_Z_NAVIGATION_SELECTOR: Selector = Selector::parse("#main-wrapper > div > div.page-az-wrap > section > div.tab-content > div > div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
     static ref ABOUT_ANIME_SELECTOR: Selector = Selector::parse("#ani_detail .ani_detail-stage .container .anis-content").unwrap();
+    static ref MOST_POPULAR_ANIMES: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
 }
 
 #[derive(Debug)]
@@ -65,6 +63,78 @@ pub struct AtoZ {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MinimalAnime {
+    pub id: String,
+    pub title: String,
+    pub image: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Anime {
+    pub id: String,
+    pub title: String,
+    pub subs: u32,
+    pub dubs: u32,
+    pub eps: u32,
+    pub duration: String,
+    pub rating: String,
+    pub image: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SpotlightAnime {
+    pub id: String,
+    pub title: String,
+    pub subs: u32,
+    pub dubs: u32,
+    pub eps: u32,
+    pub duration: String,
+    pub rank: u32,
+    pub image: String,
+    pub description: String,
+    pub category: String,
+    pub released_day: String,
+    pub quality: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Top10Anime {
+    pub id: String,
+    pub title: String,
+    pub subs: u32,
+    pub dubs: u32,
+    pub eps: u32,
+    pub rank: u32,
+    pub image: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MostPopularAnimes {
+    pub id: String,
+    pub title: String,
+    pub subs: u32,
+    pub dubs: u32,
+    pub eps: u32,
+    pub category: String,
+    pub image: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FeaturedAnime {
+    pub top_airing_animes: Vec<MinimalAnime>,
+    pub most_popular_animes: Vec<MinimalAnime>,
+    pub most_favorite_animes: Vec<MinimalAnime>,
+    pub latest_completed_animes: Vec<MinimalAnime>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Top10PeriodRankedAnime {
+    pub day: Vec<Top10Anime>,
+    pub week: Vec<Top10Anime>,
+    pub month: Vec<Top10Anime>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AboutAnime {
     pub id: String,
     pub mal_id: u32,
@@ -89,6 +159,7 @@ pub struct AboutAnime {
     pub studios: Vec<String>,
     pub producers: Vec<String>,
     pub genres: Vec<String>,
+    pub most_popular_animes: Vec<MostPopularAnimes>,
 }
 
 impl HiAnimeRust {
@@ -625,6 +696,7 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         studios: vec![],
         producers: vec![],
         genres: vec![],
+        most_popular_animes: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -773,6 +845,79 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
     });
 
     about_anime
+        .most_popular_animes
+        .extend(extract_most_popular_animes(document, &MOST_POPULAR_ANIMES));
+
+    about_anime
+}
+
+fn extract_most_popular_animes(document: &Html, selector: &Selector) -> Vec<MostPopularAnimes> {
+    let dynamic_name_selector = Selector::parse(".film-detail .dynamic-name").unwrap();
+    let tick_selector = Selector::parse(".fd-infor .tick").unwrap();
+    let tick_item_sub_selector = Selector::parse(".fd-infor .tick .tick-item.tick-sub").unwrap();
+    let tick_item_dub_selector = Selector::parse(".fd-infor .tick .tick-item.tick-dub").unwrap();
+    let tick_item_eps_selector = Selector::parse(".fd-infor .tick .tick-item.tick-eps").unwrap();
+    let film_poster_selector = Selector::parse(".film-poster .film-poster-img").unwrap();
+
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .select(&dynamic_name_selector)
+                .next()
+                .and_then(|e| e.value().attr("href"))
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default();
+
+            let title = element
+                .select(&dynamic_name_selector)
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
+
+            let image = element
+                .select(&film_poster_selector)
+                .next()
+                .and_then(|e| e.value().attr("data-src").map(|s| s.to_string()))
+                .unwrap_or_default();
+
+            let subs = element
+                .select(&tick_item_sub_selector)
+                .next()
+                .and_then(|e| e.text().collect::<String>().trim().parse::<u32>().ok())
+                .unwrap_or_default();
+
+            let dubs = element
+                .select(&tick_item_dub_selector)
+                .next()
+                .and_then(|e| e.text().collect::<String>().trim().parse::<u32>().ok())
+                .unwrap_or_default();
+
+            let eps = element
+                .select(&tick_item_eps_selector)
+                .next()
+                .and_then(|e| e.text().collect::<String>().trim().parse::<u32>().ok())
+                .unwrap_or_default();
+
+            let category = element
+                .select(&tick_selector)
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .map(|s| s.replace('\n', " ").replace("  ", " ").trim().to_string())
+                .map(|s| s.split_whitespace().last().unwrap_or_default().to_string())
+                .unwrap_or_default();
+
+            MostPopularAnimes {
+                id,
+                title,
+                image,
+                subs,
+                dubs,
+                eps,
+                category,
+            }
+        })
+        .collect()
 }
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
