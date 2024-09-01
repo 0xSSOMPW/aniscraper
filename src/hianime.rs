@@ -80,6 +80,14 @@ pub struct AboutAnime {
     pub subs: u32,
     pub dubs: u32,
     pub eps: u32,
+    pub japanese: String,
+    pub synonyms: String,
+    pub aired: String,
+    pub premiered: String,
+    pub status: String,
+    pub mal_score: String,
+    pub studios: Vec<String>,
+    pub producers: Vec<String>,
 }
 
 impl HiAnimeRust {
@@ -583,6 +591,10 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
     let description_selector = Selector::parse(".anisc-detail .film-description .text").unwrap();
     let tick_selector = Selector::parse(".film-stats .tick").unwrap();
     let json_script_selector = Selector::parse("#syncData").unwrap();
+    let more_info_selector = Selector::parse(
+        "#ani_detail .ani_detail-stage .container .anis-content .anisc-info .item-title",
+    )
+    .unwrap();
 
     let mut about_anime = AboutAnime {
         id: String::new(),
@@ -599,6 +611,14 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         subs: 0,
         dubs: 0,
         eps: 0,
+        japanese: String::new(),
+        synonyms: String::new(),
+        aired: String::new(),
+        premiered: String::new(),
+        status: String::new(),
+        mal_score: String::new(),
+        studios: vec![],
+        producers: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -697,6 +717,44 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
                 .unwrap_or("")
                 .parse::<u32>()
                 .unwrap_or_default();
+        }
+    });
+
+    document.select(&more_info_selector).for_each(|element| {
+        let head = element
+            .select(&Selector::parse(".item-head").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        let key = element
+            .select(&Selector::parse(".name").unwrap())
+            .next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_default();
+
+        match head.as_str() {
+            "Japanese:" => about_anime.japanese = key,
+            "Synonyms:" => about_anime.synonyms = key,
+            "Aired:" => about_anime.aired = key,
+            "Premiered:" => about_anime.premiered = key,
+            "Status:" => about_anime.status = key,
+            "MAL Score:" => about_anime.mal_score = key,
+            "Producers:" => {
+                about_anime.producers.extend(
+                    element
+                        .select(&Selector::parse("a.name").unwrap())
+                        .map(|e| e.text().collect::<String>().trim().to_string()),
+                );
+            }
+            "Studios:" => {
+                about_anime.studios.extend(
+                    element
+                        .select(&Selector::parse("a.name").unwrap())
+                        .map(|e| e.text().collect::<String>().trim().to_string()),
+                );
+            }
+            _ => {}
         }
     });
 
