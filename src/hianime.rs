@@ -34,7 +34,8 @@ lazy_static! {
     static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
     static ref A_TO_Z_NAVIGATION_SELECTOR: Selector = Selector::parse("#main-wrapper > div > div.page-az-wrap > section > div.tab-content > div > div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
     static ref ABOUT_ANIME_SELECTOR: Selector = Selector::parse("#ani_detail .ani_detail-stage .container .anis-content").unwrap();
-    static ref MOST_POPULAR_ANIMES: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
+    static ref MOST_POPULAR_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
+    static ref RELATED_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").unwrap();
 }
 
 #[derive(Debug)]
@@ -109,7 +110,7 @@ pub struct Top10Anime {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MostPopularAnimes {
+pub struct SideBarAnimes {
     pub id: String,
     pub title: String,
     pub subs: u32,
@@ -159,7 +160,8 @@ pub struct AboutAnime {
     pub studios: Vec<String>,
     pub producers: Vec<String>,
     pub genres: Vec<String>,
-    pub most_popular_animes: Vec<MostPopularAnimes>,
+    pub most_popular_animes: Vec<SideBarAnimes>,
+    pub related_animes: Vec<SideBarAnimes>,
 }
 
 impl HiAnimeRust {
@@ -697,6 +699,7 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         producers: vec![],
         genres: vec![],
         most_popular_animes: vec![],
+        related_animes: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -846,12 +849,18 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
 
     about_anime
         .most_popular_animes
-        .extend(extract_most_popular_animes(document, &MOST_POPULAR_ANIMES));
+        .extend(extract_side_bar_animes(
+            document,
+            &MOST_POPULAR_ANIME_SELECTOR,
+        ));
+    about_anime
+        .related_animes
+        .extend(extract_side_bar_animes(document, &RELATED_ANIME_SELECTOR));
 
     about_anime
 }
 
-fn extract_most_popular_animes(document: &Html, selector: &Selector) -> Vec<MostPopularAnimes> {
+fn extract_side_bar_animes(document: &Html, selector: &Selector) -> Vec<SideBarAnimes> {
     let dynamic_name_selector = Selector::parse(".film-detail .dynamic-name").unwrap();
     let tick_selector = Selector::parse(".fd-infor .tick").unwrap();
     let tick_item_sub_selector = Selector::parse(".fd-infor .tick .tick-item.tick-sub").unwrap();
@@ -907,7 +916,7 @@ fn extract_most_popular_animes(document: &Html, selector: &Selector) -> Vec<Most
                 .map(|s| s.split_whitespace().last().unwrap_or_default().to_string())
                 .unwrap_or_default();
 
-            MostPopularAnimes {
+            SideBarAnimes {
                 id,
                 title,
                 image,
