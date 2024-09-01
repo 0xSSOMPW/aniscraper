@@ -2,7 +2,6 @@
 
 mod env;
 mod error;
-mod model;
 mod proxy;
 mod utils;
 
