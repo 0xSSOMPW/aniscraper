@@ -36,6 +36,7 @@ lazy_static! {
     static ref ABOUT_ANIME_SELECTOR: Selector = Selector::parse("#ani_detail .ani_detail-stage .container .anis-content").unwrap();
     static ref MOST_POPULAR_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
     static ref RELATED_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").unwrap();
+    static ref RECOMMENDED_ANIME_SELECTOR: Selector = Selector::parse("#main-content .block_area.block_area_category .tab-content .flw-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -162,6 +163,7 @@ pub struct AboutAnime {
     pub genres: Vec<String>,
     pub most_popular_animes: Vec<SideBarAnimes>,
     pub related_animes: Vec<SideBarAnimes>,
+    pub recommended_animes: Vec<Anime>,
 }
 
 impl HiAnimeRust {
@@ -700,6 +702,7 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         genres: vec![],
         most_popular_animes: vec![],
         related_animes: vec![],
+        recommended_animes: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -856,6 +859,9 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
     about_anime
         .related_animes
         .extend(extract_side_bar_animes(document, &RELATED_ANIME_SELECTOR));
+    about_anime
+        .recommended_animes
+        .extend(extract_anime_data(document, &RECOMMENDED_ANIME_SELECTOR));
 
     about_anime
 }
