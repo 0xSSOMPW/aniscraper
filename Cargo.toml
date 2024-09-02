@@ -10,6 +10,7 @@ dotenvy = "0.15.7"
 flate2 = "1.0.33"
 lazy_static = "1.5.0"
 rand = "0.8.5"
+regex = "1.10.6"
 reqwest = { version = "0.12.7", features = ["json", "blocking"] }
 scraper = "0.20.0"
 serde = { version = "1.0.209", features = ["derive"] }

@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use regex::Regex;
 use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -37,6 +38,7 @@ lazy_static! {
     static ref MOST_POPULAR_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
     static ref RELATED_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").unwrap();
     static ref RECOMMENDED_ANIME_SELECTOR: Selector = Selector::parse("#main-content .block_area.block_area_category .tab-content .flw-item").unwrap();
+    static ref SEASONS_SELECTOR: Selector = Selector::parse(".os-list a.os-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -122,6 +124,15 @@ pub struct SideBarAnimes {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AnimeSeason {
+    pub id: String,
+    pub title: String,
+    pub anime_title: String,
+    pub image: String,
+    pub is_current: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FeaturedAnime {
     pub top_airing_animes: Vec<MinimalAnime>,
     pub most_popular_animes: Vec<MinimalAnime>,
@@ -164,6 +175,20 @@ pub struct AboutAnime {
     pub most_popular_animes: Vec<SideBarAnimes>,
     pub related_animes: Vec<SideBarAnimes>,
     pub recommended_animes: Vec<Anime>,
+    pub seasons: Vec<AnimeSeason>,
+}
+
+trait HasClass {
+    fn has_class(&self, class_name: &str) -> bool;
+}
+
+impl HasClass for scraper::ElementRef<'_> {
+    fn has_class(&self, class_name: &str) -> bool {
+        self.value()
+            .attr("class")
+            .map(|class| class.split_whitespace().any(|c| c == class_name))
+            .unwrap_or(false)
+    }
 }
 
 impl HiAnimeRust {
@@ -175,7 +200,6 @@ impl HiAnimeRust {
         // Release the lock.
         drop(secret_lock);
 
-        // let domain_list = String::from("a,b,c,d,e");
         let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
         let domains: Vec<String> = if domain_list.is_empty() {
             vec!["https://aniwatchtv.to".to_string()]
@@ -703,6 +727,7 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
         most_popular_animes: vec![],
         related_animes: vec![],
         recommended_animes: vec![],
+        seasons: vec![],
     };
 
     document.select(selector).for_each(|element| {
@@ -862,6 +887,9 @@ fn extract_anime_about_info(document: &Html, selector: &Selector) -> AboutAnime 
     about_anime
         .recommended_animes
         .extend(extract_anime_data(document, &RECOMMENDED_ANIME_SELECTOR));
+    about_anime
+        .seasons
+        .extend(extract_anime_seasons(document, &SEASONS_SELECTOR));
 
     about_anime
 }
@@ -930,6 +958,55 @@ fn extract_side_bar_animes(document: &Html, selector: &Selector) -> Vec<SideBarA
                 dubs,
                 eps,
                 category,
+            }
+        })
+        .collect()
+}
+
+fn extract_anime_seasons(document: &Html, selector: &Selector) -> Vec<AnimeSeason> {
+    document
+        .select(selector)
+        .map(|element| {
+            let id = element
+                .value()
+                .attr("href")
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default();
+
+            let title = element
+                .value()
+                .attr("title")
+                .map(|e| e.trim().to_string())
+                .unwrap_or_default();
+
+            let anime_title = element
+                .select(&Selector::parse(".title").unwrap())
+                .next()
+                .map(|e| e.text().collect::<String>().trim().to_string())
+                .unwrap_or_default();
+
+            let mut image = element
+                .select(&Selector::parse(".season-poster").unwrap())
+                .next()
+                .and_then(|e| e.value().attr("style").map(|s| s.to_string()))
+                .unwrap_or_default();
+
+            let re = Regex::new(r"url\((?P<url>.*?)\)").unwrap();
+
+            image = re
+                .captures(&image)
+                .and_then(|caps| caps.name("url"))
+                .map(|m| m.as_str().trim_matches('"').to_string())
+                .unwrap_or_default();
+
+            let is_current = element.has_class("active");
+
+            AnimeSeason {
+                id,
+                title,
+                anime_title,
+                image,
+                is_current,
             }
         })
         .collect()
