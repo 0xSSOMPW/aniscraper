@@ -15,8 +15,7 @@ use std::time::Duration;
 ///
 /// Returns the HTML content of the page as a string.
 pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Error>> {
-    let max_attempts =
-        parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config()).unwrap_or_else(|_| 50);
+    let max_attempts = parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config()).unwrap_or(50);
     let timeout_duration = Duration::from_secs(5);
 
     // Ensure proxies are not empty
@@ -75,7 +74,7 @@ pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Er
         }
     }
 
-    Err(Box::new(AniRustError::NoProxiesAvailable))
+    Err(Box::new(AniRustError::FailedToFetchAfterRetries))
 }
 
 pub fn parse_usize(s: &str) -> Result<usize, AniRustError> {
