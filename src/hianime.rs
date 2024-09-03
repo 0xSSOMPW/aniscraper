@@ -39,6 +39,7 @@ lazy_static! {
     static ref RELATED_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").unwrap();
     static ref RECOMMENDED_ANIME_SELECTOR: Selector = Selector::parse("#main-content .block_area.block_area_category .tab-content .flw-item").unwrap();
     static ref SEASONS_SELECTOR: Selector = Selector::parse(".os-list a.os-item").unwrap();
+    static ref EPISODE_SELECTOR: Selector = Selector::parse(".detail-infor-content .ss-list a").unwrap();
 }
 
 #[derive(Debug)]
@@ -57,6 +58,12 @@ pub struct HomeInfo {
     pub featured: FeaturedAnime,
     pub top_10_animes: Top10PeriodRankedAnime,
     pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EpisodesInfo {
+    pub total_episodes: u32,
+    pub episodes: Vec<AnimeEpisode>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -133,6 +140,14 @@ pub struct AnimeSeason {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AnimeEpisode {
+    pub id: String,
+    pub episode_no: u32,
+    pub title: String,
+    pub is_filler: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FeaturedAnime {
     pub top_airing_animes: Vec<MinimalAnime>,
     pub most_popular_animes: Vec<MinimalAnime>,
@@ -176,6 +191,20 @@ pub struct AboutAnime {
     pub related_animes: Vec<SideBarAnimes>,
     pub recommended_animes: Vec<Anime>,
     pub seasons: Vec<AnimeSeason>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AjaxResponse {
+    status: bool,
+    html: String,
+    totalItems: u32,
+    continueWatch: Option<ContinueWatch>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ContinueWatch {
+    episode_id: u32,
+    time: u32,
 }
 
 trait HasClass {
@@ -334,6 +363,61 @@ impl HiAnimeRust {
         let document = Html::parse_document(&curl);
         let about = extract_anime_about_info(&document, &ABOUT_ANIME_SELECTOR);
         Ok(about)
+    }
+
+    // BUG: Not working, find another way to do it
+    pub async fn scrape_episodes(&self, id: &str) -> Result<EpisodesInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+        let anime_id = id.split('-').last().unwrap();
+
+        for domain in &self.domains {
+            let url = format!("{}/ajax/v2/episode/list/{}", domain, anime_id);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let mut document = Html::parse_document(&curl);
+        let dd = document.html();
+
+        // Compile patterns once
+        let html_pattern = r"\{([^}]*)\}";
+        let html_re = Regex::new(html_pattern).unwrap();
+
+        if let Some(captures) = html_re.captures(&dd) {
+            if let Some(matched) = captures.get(1) {
+                let parsed_str = matched
+                    .as_str()
+                    .replace("\"status\":true,\"html\":\"", "")
+                    .split("\",\"totalItems\":")
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>();
+                let decoded_html =
+                    html_entities::decode_html_entities(parsed_str.first().unwrap()).unwrap();
+                document = Html::parse_document(&decoded_html);
+            }
+        }
+
+        let episodes = extract_anime_episode(&document, &EPISODE_SELECTOR);
+        let total_episodes = episodes.len() as u32;
+
+        Ok(EpisodesInfo {
+            total_episodes,
+            episodes,
+        })
     }
 }
 
@@ -1002,6 +1086,51 @@ fn extract_anime_seasons(document: &Html, selector: &Selector) -> Vec<AnimeSeaso
                 image,
                 is_current,
             }
+        })
+        .collect()
+}
+
+fn extract_anime_episode(document: &Html, selector: &Selector) -> Vec<AnimeEpisode> {
+    document
+        .select(selector)
+        .filter_map(|element| {
+            // println!("{:?}", element);
+            let id = element
+                .value()
+                .attr("href")
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default()
+                .split('/')
+                .last()
+                .unwrap_or_default()
+                .to_string();
+
+            if id.is_empty() {
+                return None;
+            }
+
+            let title = element
+                .value()
+                .attr("title")
+                .map(|e| e.trim().to_string())
+                .unwrap_or_default();
+
+            let episode_no = id
+                .split('=')
+                .last()
+                .unwrap_or_default()
+                .parse::<u32>()
+                .ok()
+                .unwrap_or_default();
+
+            let is_filler = element.has_class("ssl-item-filler");
+
+            Some(AnimeEpisode {
+                id,
+                title,
+                episode_no,
+                is_filler,
+            })
         })
         .collect()
 }
