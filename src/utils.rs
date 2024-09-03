@@ -14,6 +14,7 @@ use std::time::Duration;
 /// Fetches data from the specified URL.
 ///
 /// Returns the HTML content of the page as a string.
+/// TODO: make it work even if proxies are not provided
 pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Error>> {
     let max_attempts = parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config()).unwrap_or(50);
     let timeout_duration = Duration::from_secs(5);

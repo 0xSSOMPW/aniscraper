@@ -193,13 +193,7 @@ impl HasClass for scraper::ElementRef<'_> {
 
 impl HiAnimeRust {
     pub async fn new(secret: Option<SecretConfig>) -> Self {
-        let mut secret_lock = env::SECRET.lock().unwrap();
-        *secret_lock = secret.clone();
-
-        let secret_clone = secret_lock.clone();
-        // Release the lock.
-        drop(secret_lock);
-
+        let secret_clone = initialize_secret(secret);
         let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
         let domains: Vec<String> = if domain_list.is_empty() {
             vec!["https://aniwatchtv.to".to_string()]
@@ -1027,7 +1021,7 @@ fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
 }
 
 // Function to extract the last page number from the response
-pub fn get_last_page_no_of_atoz_list(document: &Html) -> u32 {
+fn get_last_page_no_of_atoz_list(document: &Html) -> u32 {
     document
         .select(&A_TO_Z_NAVIGATION_SELECTOR)
         .last()
@@ -1035,4 +1029,13 @@ pub fn get_last_page_no_of_atoz_list(document: &Html) -> u32 {
         .and_then(|href| href.split('=').last())
         .and_then(|page_str| page_str.parse::<u32>().ok())
         .unwrap_or(212)
+}
+
+fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
+    let mut secret_lock = env::SECRET.lock().unwrap();
+    secret_lock.clone_from(&secret);
+    let secret_clone = secret_lock.clone();
+    // Release the lock.
+    drop(secret_lock);
+    secret_clone
 }
