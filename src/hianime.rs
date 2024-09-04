@@ -33,12 +33,15 @@ lazy_static! {
     static ref TOP_10_SELECTOR: Selector =
         Selector::parse("#main-sidebar .block_area-realtime [id^=\"top-viewed-\"]").unwrap();
     static ref A_TO_Z_SELECTOR: Selector = Selector::parse("#main-wrapper div div.page-az-wrap section div.tab-content div div.film_list-wrap .flw-item").unwrap();
-    static ref A_TO_Z_NAVIGATION_SELECTOR: Selector = Selector::parse("#main-wrapper > div > div.page-az-wrap > section > div.tab-content > div > div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
+    static ref NAVIGATION_SELECTOR: Selector = Selector::parse("div.pre-pagination.mt-5.mb-5 > nav > ul > li:last-child a").unwrap();
     static ref ABOUT_ANIME_SELECTOR: Selector = Selector::parse("#ani_detail .ani_detail-stage .container .anis-content").unwrap();
     static ref MOST_POPULAR_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(2) .anif-block-ul ul li").unwrap();
     static ref RELATED_ANIME_SELECTOR: Selector = Selector::parse("#main-sidebar .block_area.block_area_sidebar.block_area-realtime:nth-of-type(1) .anif-block-ul ul li").unwrap();
     static ref RECOMMENDED_ANIME_SELECTOR: Selector = Selector::parse("#main-content .block_area.block_area_category .tab-content .flw-item").unwrap();
     static ref SEASONS_SELECTOR: Selector = Selector::parse(".os-list a.os-item").unwrap();
+    static ref EPISODE_SELECTOR: Selector = Selector::parse(".detail-infor-content .ss-list a").unwrap();
+    static ref CATEGORY_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
+    static ref SEARCH_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -57,6 +60,30 @@ pub struct HomeInfo {
     pub featured: FeaturedAnime,
     pub top_10_animes: Top10PeriodRankedAnime,
     pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CategoryInfo {
+    pub total_pages: u32,
+    pub has_next_page: bool,
+    pub animes: Vec<Anime>,
+    pub top_10_animes: Top10PeriodRankedAnime,
+    pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SearchInfo {
+    pub total_pages: u32,
+    pub has_next_page: bool,
+    pub animes: Vec<Anime>,
+    pub most_popular_animes: Vec<SideBarAnimes>,
+    pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EpisodesInfo {
+    pub total_episodes: u32,
+    pub episodes: Vec<AnimeEpisode>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -133,6 +160,14 @@ pub struct AnimeSeason {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AnimeEpisode {
+    pub id: String,
+    pub episode_no: u32,
+    pub title: String,
+    pub is_filler: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FeaturedAnime {
     pub top_airing_animes: Vec<MinimalAnime>,
     pub most_popular_animes: Vec<MinimalAnime>,
@@ -193,13 +228,7 @@ impl HasClass for scraper::ElementRef<'_> {
 
 impl HiAnimeRust {
     pub async fn new(secret: Option<SecretConfig>) -> Self {
-        let mut secret_lock = env::SECRET.lock().unwrap();
-        *secret_lock = secret.clone();
-
-        let secret_clone = secret_lock.clone();
-        // Release the lock.
-        drop(secret_lock);
-
+        let secret_clone = initialize_secret(secret);
         let domain_list = EnvVar::HIANIME_DOMAINS.get_config();
         let domains: Vec<String> = if domain_list.is_empty() {
             vec!["https://aniwatchtv.to".to_string()]
@@ -304,7 +333,7 @@ impl HiAnimeRust {
 
         let animes = extract_anime_data(&document, &A_TO_Z_SELECTOR);
 
-        let total_pages = get_last_page_no_of_atoz_list(&document);
+        let total_pages = get_last_page_no(&document);
         let has_next_page = page_no != total_pages;
 
         Ok(AtoZ {
@@ -340,6 +369,150 @@ impl HiAnimeRust {
         let document = Html::parse_document(&curl);
         let about = extract_anime_about_info(&document, &ABOUT_ANIME_SELECTOR);
         Ok(about)
+    }
+
+    pub async fn scrape_category(
+        &self,
+        category: &str,
+        page_no: u32,
+    ) -> Result<CategoryInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            let url = format!("{}/{}?page={}", domain, category, page_no);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+        let animes = extract_anime_data(&document, &CATEGORY_SELECTOR);
+        let top_10_animes = extract_top_10(&document, &TOP_10_SELECTOR);
+        let genres = extract_genres(&document, &GENRES_SELECTOR);
+        let total_pages = get_last_page_no(&document);
+        let has_next_page = page_no != total_pages;
+
+        Ok(CategoryInfo {
+            total_pages,
+            has_next_page,
+            animes,
+            top_10_animes,
+            genres,
+        })
+    }
+
+    pub async fn scrape_search(
+        &self,
+        query: &str,
+        page_no: u32,
+    ) -> Result<SearchInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            let url = format!("{}/search?keyword={}&page={}", domain, query, page_no);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+        let most_popular_selector = Selector::parse(
+            "#main-sidebar .block_area.block_area_sidebar.block_area-realtime .anif-block-ul ul li",
+        )
+        .unwrap();
+
+        let animes = extract_anime_data(&document, &SEARCH_SELECTOR);
+        let most_popular_animes = extract_side_bar_animes(&document, &most_popular_selector);
+        let total_pages = get_last_page_no(&document);
+        let has_next_page = page_no != total_pages;
+        let genres = extract_genres(&document, &GENRES_SELECTOR);
+
+        Ok(SearchInfo {
+            total_pages,
+            has_next_page,
+            animes,
+            most_popular_animes,
+            genres,
+        })
+    }
+
+    // BUG: Not working, find another way to do it
+    pub async fn scrape_episodes(&self, id: &str) -> Result<EpisodesInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+        let anime_id = id.split('-').last().unwrap();
+
+        for domain in &self.domains {
+            let url = format!("{}/ajax/v2/episode/list/{}", domain, anime_id);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let mut document = Html::parse_document(&curl);
+        let dd = document.html();
+
+        // Compile patterns once
+        let html_pattern = r"\{([^}]*)\}";
+        let html_re = Regex::new(html_pattern).unwrap();
+
+        if let Some(captures) = html_re.captures(&dd) {
+            if let Some(matched) = captures.get(1) {
+                let parsed_str = matched
+                    .as_str()
+                    .replace("\"status\":true,\"html\":\"", "")
+                    .split("\",\"totalItems\":")
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>();
+                document = Html::parse_document(parsed_str.first().unwrap());
+            }
+        }
+
+        let episodes = extract_anime_episode(&document, &EPISODE_SELECTOR);
+        let total_episodes = episodes.len() as u32;
+
+        Ok(EpisodesInfo {
+            total_episodes,
+            episodes,
+        })
     }
 }
 
@@ -1012,6 +1185,51 @@ fn extract_anime_seasons(document: &Html, selector: &Selector) -> Vec<AnimeSeaso
         .collect()
 }
 
+fn extract_anime_episode(document: &Html, selector: &Selector) -> Vec<AnimeEpisode> {
+    document
+        .select(selector)
+        .filter_map(|element| {
+            // println!("{:?}", element);
+            let id = element
+                .value()
+                .attr("href")
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default()
+                .split('/')
+                .last()
+                .unwrap_or_default()
+                .to_string();
+
+            if id.is_empty() {
+                return None;
+            }
+
+            let title = element
+                .value()
+                .attr("title")
+                .map(|e| e.trim().to_string())
+                .unwrap_or_default();
+
+            let episode_no = id
+                .split('=')
+                .last()
+                .unwrap_or_default()
+                .parse::<u32>()
+                .ok()
+                .unwrap_or_default();
+
+            let is_filler = element.has_class("ssl-item-filler");
+
+            Some(AnimeEpisode {
+                id,
+                title,
+                episode_no,
+                is_filler,
+            })
+        })
+        .collect()
+}
+
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
     document
         .select(selector)
@@ -1027,12 +1245,21 @@ fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
 }
 
 // Function to extract the last page number from the response
-pub fn get_last_page_no_of_atoz_list(document: &Html) -> u32 {
+fn get_last_page_no(document: &Html) -> u32 {
     document
-        .select(&A_TO_Z_NAVIGATION_SELECTOR)
+        .select(&NAVIGATION_SELECTOR)
         .last()
         .and_then(|element| element.value().attr("href"))
         .and_then(|href| href.split('=').last())
         .and_then(|page_str| page_str.parse::<u32>().ok())
-        .unwrap_or(212)
+        .unwrap_or(1)
+}
+
+fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
+    let mut secret_lock = env::SECRET.lock().unwrap();
+    secret_lock.clone_from(&secret);
+    let secret_clone = secret_lock.clone();
+    // Release the lock.
+    drop(secret_lock);
+    secret_clone
 }
