@@ -41,6 +41,7 @@ lazy_static! {
     static ref SEASONS_SELECTOR: Selector = Selector::parse(".os-list a.os-item").unwrap();
     static ref EPISODE_SELECTOR: Selector = Selector::parse(".detail-infor-content .ss-list a").unwrap();
     static ref CATEGORY_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
+    static ref SEARCH_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -67,6 +68,15 @@ pub struct CategoryInfo {
     pub has_next_page: bool,
     pub animes: Vec<Anime>,
     pub top_10_animes: Top10PeriodRankedAnime,
+    pub genres: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SearchInfo {
+    pub total_pages: u32,
+    pub has_next_page: bool,
+    pub animes: Vec<Anime>,
+    pub most_popular_animes: Vec<SideBarAnimes>,
     pub genres: Vec<String>,
 }
 
@@ -201,20 +211,6 @@ pub struct AboutAnime {
     pub related_animes: Vec<SideBarAnimes>,
     pub recommended_animes: Vec<Anime>,
     pub seasons: Vec<AnimeSeason>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct AjaxResponse {
-    status: bool,
-    html: String,
-    totalItems: u32,
-    continueWatch: Option<ContinueWatch>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct ContinueWatch {
-    episode_id: u32,
-    time: u32,
 }
 
 trait HasClass {
@@ -417,6 +413,55 @@ impl HiAnimeRust {
             genres,
         })
     }
+
+    pub async fn scrape_search(
+        &self,
+        query: &str,
+        page_no: u32,
+    ) -> Result<SearchInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        for domain in &self.domains {
+            let url = format!("{}/search?keyword={}&page={}", domain, query, page_no);
+
+            match get_curl(&url, &self.proxies).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+        let most_popular_selector = Selector::parse(
+            "#main-sidebar .block_area.block_area_sidebar.block_area-realtime .anif-block-ul ul li",
+        )
+        .unwrap();
+
+        let animes = extract_anime_data(&document, &SEARCH_SELECTOR);
+        let most_popular_animes = extract_side_bar_animes(&document, &most_popular_selector);
+        let total_pages = get_last_page_no(&document);
+        let has_next_page = page_no != total_pages;
+        let genres = extract_genres(&document, &GENRES_SELECTOR);
+
+        Ok(SearchInfo {
+            total_pages,
+            has_next_page,
+            animes,
+            most_popular_animes,
+            genres,
+        })
+    }
+
     // BUG: Not working, find another way to do it
     pub async fn scrape_episodes(&self, id: &str) -> Result<EpisodesInfo, AniRustError> {
         let mut error_vec = vec![];
@@ -1207,7 +1252,7 @@ fn get_last_page_no(document: &Html) -> u32 {
         .and_then(|element| element.value().attr("href"))
         .and_then(|href| href.split('=').last())
         .and_then(|page_str| page_str.parse::<u32>().ok())
-        .unwrap_or(212)
+        .unwrap_or(1)
 }
 
 fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
