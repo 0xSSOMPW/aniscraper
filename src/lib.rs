@@ -1,6 +1,6 @@
 // src/lib.rs
 
-mod env;
+pub mod env;
 mod error;
 mod proxy;
 mod utils;
