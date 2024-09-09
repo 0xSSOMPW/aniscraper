@@ -9,7 +9,7 @@ use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     proxy::{load_proxies, Proxy},
-    utils::{get_curl, opt_box_error_vec_to_string},
+    utils::{anirust_error_vec_to_string, get_curl},
 };
 
 lazy_static! {
@@ -274,7 +274,7 @@ impl HiAnimeRust {
         }
 
         if curl.is_empty() {
-            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
 
@@ -326,7 +326,7 @@ impl HiAnimeRust {
         }
 
         if curl.is_empty() {
-            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
 
@@ -363,7 +363,7 @@ impl HiAnimeRust {
         }
 
         if curl.is_empty() {
-            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
 
@@ -395,7 +395,7 @@ impl HiAnimeRust {
         }
 
         if curl.is_empty() {
-            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
 
@@ -438,7 +438,7 @@ impl HiAnimeRust {
         }
 
         if curl.is_empty() {
-            let error_string: String = opt_box_error_vec_to_string(error_vec);
+            let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
 
@@ -484,7 +484,7 @@ impl HiAnimeRust {
         // }
         //
         // if curl.is_empty() {
-        //     let error_string: String = opt_box_error_vec_to_string(error_vec);
+        //     let error_string: String = anirust_error_vec_to_string(error_vec);
         //     return Err(AniRustError::UnknownError(error_string));
         // }
         //
@@ -1287,4 +1287,3 @@ fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
     drop(secret_lock);
     secret_clone
 }
-

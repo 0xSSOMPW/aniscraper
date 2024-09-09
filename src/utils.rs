@@ -14,7 +14,7 @@ use std::time::Duration;
 /// Fetches data from the specified URL.
 ///
 /// Returns the HTML content of the page as a string.
-pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Error>> {
+pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, AniRustError> {
     let max_attempts = parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config()).unwrap_or(50);
     let timeout_duration = Duration::from_secs(5);
 
@@ -48,7 +48,7 @@ pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Er
                 attempt += 1;
                 continue;
             }
-            Err(e) => return Err(Box::new(e)),
+            Err(e) => return Err(AniRustError::ReqwestError(e)),
         };
 
         let res_headers = response.headers().to_owned();
@@ -63,28 +63,28 @@ pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, Box<dyn Er
             "gzip" => {
                 let mut decoded = Vec::new();
                 let mut gz = GzDecoder::new(res_bytes.as_ref());
-                gz.read_to_end(&mut decoded)?;
-                String::from_utf8(decoded)?
+                gz.read_to_end(&mut decoded).unwrap_or_default();
+                String::from_utf8(decoded).unwrap_or_default()
             }
             "deflate" => {
                 let mut zf = ZlibDecoder::new(res_bytes.as_ref());
                 let mut decoded = Vec::new();
-                zf.read_to_end(&mut decoded)?;
-                String::from_utf8(decoded)?
+                zf.read_to_end(&mut decoded).unwrap_or_default();
+                String::from_utf8(decoded).unwrap_or_default()
             }
             "br" => {
                 let mut decompressor = Decompressor::new(res_bytes.as_ref(), 4096);
                 let mut decoded = Vec::new();
-                decompressor.read_to_end(&mut decoded)?;
-                String::from_utf8(decoded)?
+                decompressor.read_to_end(&mut decoded).unwrap_or_default();
+                String::from_utf8(decoded).unwrap_or_default()
             }
-            _ => String::from_utf8(res_bytes.to_vec())?,
+            _ => String::from_utf8(res_bytes.to_vec()).unwrap_or_default(),
         };
 
         return Ok(body);
     }
 
-    Err(Box::new(AniRustError::FailedToFetchAfterRetries))
+    Err(AniRustError::FailedToFetchAfterRetries)
 }
 
 pub fn parse_usize(s: &str) -> Result<usize, AniRustError> {
@@ -97,7 +97,7 @@ pub fn stringify<T: fmt::Display>(input: T) -> String {
     format!("{}", input)
 }
 
-pub fn opt_box_error_vec_to_string(error_vec: Vec<Option<Box<dyn Error>>>) -> String {
+pub fn anirust_error_vec_to_string(error_vec: Vec<Option<AniRustError>>) -> String {
     error_vec
         .iter()
         .filter_map(|opt_error| opt_error.as_ref().map(|e| e.to_string()))
