@@ -9,7 +9,7 @@ readme = "README.md"
 authors = ["falcon71181"]
 keywords = ["web", "anime", "web-scraping", "hianime", "zoro"]
 repository = "https://github.com/0xSSOMPW/aniscraper"
-license = "MIT LICENSE"
+license = "MIT"
 license-file = "LICENSE"
 
 [lib]
