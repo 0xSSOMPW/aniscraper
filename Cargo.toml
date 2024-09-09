@@ -2,6 +2,19 @@
 name = "aniscraper"
 version = "0.1.0"
 edition = "2021"
+categories = ["web-programming", "parsing", "parser-implementations", "web-programming::http-client"]
+description = "Rust library designed for efficient web scraping and data extraction. It simplifies the process of fetching, parsing, and extracting data from websites."
+documentation = "https://github.com/0xSSOMPW/aniscraper/blob/master/README.md"
+readme = "README.md"
+authors = ["falcon71181"]
+keywords = ["web", "anime", "web-scraping", "hianime", "zoro"]
+repository = "https://github.com/0xSSOMPW/aniscraper"
+license = "MIT LICENSE"
+license-file = "LICENSE"
+
+[lib]
+name = "aniscraper"           # The name of the target.
+path = "src/lib.rs"    # The source file of the target.
 
 [dependencies]
 brotli = "6.0.0"
