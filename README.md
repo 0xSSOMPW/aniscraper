@@ -114,7 +114,7 @@ async fn main() {
         accept_encoding_header: "your-accept-encoding".to_string(),
         accept_header: "your-accept-header".to_string(),
     };
-    let hianime = HiAnimeRust::new(secret_config).await;
+    let hianime = HiAnimeRust::new(Some(secret_config)).await;
 }
 ```
 
