@@ -66,6 +66,7 @@ pub struct HomeInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CategoryInfo {
     pub total_pages: u32,
+    pub current_page: u32,
     pub has_next_page: bool,
     pub animes: Vec<Anime>,
     pub top_10_animes: Top10PeriodRankedAnime,
@@ -75,6 +76,7 @@ pub struct CategoryInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchInfo {
     pub total_pages: u32,
+    pub current_page: u32,
     pub has_next_page: bool,
     pub animes: Vec<Anime>,
     pub most_popular_animes: Vec<SideBarAnimes>,
@@ -90,6 +92,7 @@ pub struct EpisodesInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AtoZ {
     pub has_next_page: bool,
+    pub current_page: u32,
     pub total_pages: u32,
     pub animes: Vec<Anime>,
 }
@@ -335,10 +338,12 @@ impl HiAnimeRust {
         let animes = extract_anime_data(&document, &A_TO_Z_SELECTOR);
 
         let total_pages = get_last_page_no(&document);
+        let current_page = page_no;
         let has_next_page = page_no != total_pages;
 
         Ok(AtoZ {
             has_next_page,
+            current_page,
             total_pages,
             animes,
         })
@@ -404,10 +409,12 @@ impl HiAnimeRust {
         let top_10_animes = extract_top_10(&document, &TOP_10_SELECTOR);
         let genres = extract_genres(&document, &GENRES_SELECTOR);
         let total_pages = get_last_page_no(&document);
+        let current_page = page_no;
         let has_next_page = page_no != total_pages;
 
         Ok(CategoryInfo {
             total_pages,
+            current_page,
             has_next_page,
             animes,
             top_10_animes,
@@ -451,11 +458,13 @@ impl HiAnimeRust {
         let animes = extract_anime_data(&document, &SEARCH_SELECTOR);
         let most_popular_animes = extract_side_bar_animes(&document, &most_popular_selector);
         let total_pages = get_last_page_no(&document);
+        let current_page = page_no;
         let has_next_page = page_no != total_pages;
         let genres = extract_genres(&document, &GENRES_SELECTOR);
 
         Ok(SearchInfo {
             total_pages,
+            current_page,
             has_next_page,
             animes,
             most_popular_animes,
