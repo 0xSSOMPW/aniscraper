@@ -1,6 +1,5 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use reqwest::Client;
 use scraper::{selectable::Selectable, Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,7 +8,7 @@ use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     proxy::{load_proxies, Proxy},
-    utils::{anirust_error_vec_to_string, get_curl},
+    utils::{anirust_error_vec_to_string, get_ajax_curl, get_curl},
 };
 
 lazy_static! {
@@ -43,6 +42,9 @@ lazy_static! {
     static ref EPISODE_SELECTOR: Selector = Selector::parse(".detail-infor-content .ss-list a").unwrap();
     static ref CATEGORY_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
     static ref SEARCH_SELECTOR: Selector = Selector::parse("#main-content .tab-content .film_list-wrap .flw-item").unwrap();
+    static ref EPISODE_NO_SELECTOR: Selector = Selector::parse(".server-notice strong").unwrap();
+    static ref EPISODE_SUB_SELECTOR: Selector = Selector::parse(".ps_-block.ps_-block-sub.servers-sub .ps__-list .server-item").unwrap();
+    static ref EPISODE_DUB_SELECTOR: Selector = Selector::parse(".ps_-block.ps_-block-sub.servers-dub .ps__-list .server-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -215,6 +217,19 @@ pub struct AboutAnime {
     pub related_animes: Vec<SideBarAnimes>,
     pub recommended_animes: Vec<Anime>,
     pub seasons: Vec<AnimeSeason>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Server {
+    pub server_name: String,
+    pub server_id: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServerInfo {
+    pub episode_no: u32,
+    pub sub: Vec<Server>,
+    pub dub: Vec<Server>,
 }
 
 trait HasClass {
@@ -474,77 +489,81 @@ impl HiAnimeRust {
 
     // BUG: Not working, find another way to do it
     pub async fn scrape_episodes(&self, id: &str) -> Result<EpisodesInfo, AniRustError> {
-        // let mut error_vec = vec![];
-        // let mut curl = String::new();
+        let mut error_vec = vec![];
+        let mut curl = String::new();
         let anime_id = id.split('-').last().unwrap();
-        //
-        // for domain in &self.domains {
-        //     let url = format!("{}/ajax/v2/episode/list/{}", domain, anime_id);
-        //
-        //     match get_curl(&url, &self.proxies).await {
-        //         Ok(curl_string) => {
-        //             curl = curl_string;
-        //             break;
-        //         }
-        //         Err(e) => {
-        //             error_vec.push(Some(e));
-        //         }
-        //     }
-        // }
-        //
-        // if curl.is_empty() {
-        //     let error_string: String = anirust_error_vec_to_string(error_vec);
-        //     return Err(AniRustError::UnknownError(error_string));
-        // }
-        //
-        // let mut document = Html::parse_document(&curl);
-        // let dd = document.html();
-        //
-        // // Compile patterns once
-        // let html_pattern = r"\{([^}]*)\}";
-        // let html_re = Regex::new(html_pattern).unwrap();
-        //
-        // if let Some(captures) = html_re.captures(&dd) {
-        //     if let Some(matched) = captures.get(1) {
-        //         let parsed_str = matched
-        //             .as_str()
-        //             .replace("\"status\":true,\"html\":\"", "")
-        //             .split("\",\"totalItems\":")
-        //             .map(|s| s.to_string())
-        //             .collect::<Vec<String>>();
-        //         document = Html::parse_document(parsed_str.first().unwrap());
-        //     }
-        // }
-        //
-        // let episodes = extract_anime_episode(&document, &EPISODE_SELECTOR);
-        // let total_episodes = episodes.len() as u32;
 
-        let url = format!(
-            "https://api-anime-rouge.vercel.app/aniwatch/episodes/{}",
-            anime_id
-        );
+        for domain in &self.domains {
+            let url = format!("{}/ajax/v2/episode/list/{}", domain, anime_id);
 
-        let client = Client::new();
-        let response = client.get(&url).send().await?.json::<Value>().await?;
+            match get_ajax_curl(&url).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
 
-        // Transforming the response into our desired structure
-        let total_episodes = response["totalEpisodes"].as_u64().unwrap_or(0) as u32;
+        if curl.is_empty() {
+            let error_string: String = anirust_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
 
-        let episodes: Vec<AnimeEpisode> = response["episodes"]
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .map(|ep| AnimeEpisode {
-                id: ep["episodeId"].as_str().unwrap_or("").to_string(),
-                episode_no: ep["episodeNo"].as_u64().unwrap_or(0) as u32,
-                title: ep["name"].as_str().unwrap_or("").to_string(),
-                is_filler: ep["filler"].as_bool().unwrap_or(false),
-            })
-            .collect();
+        let document = Html::parse_document(&curl);
+
+        let episodes = extract_anime_episode(&document, &EPISODE_SELECTOR);
+        let total_episodes = episodes.len() as u32;
 
         Ok(EpisodesInfo {
             total_episodes,
             episodes,
+        })
+    }
+
+    pub async fn scrape_servers(&self, id: &str) -> Result<ServerInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+        let episode_id = id.split("ep=").last().unwrap_or_default();
+
+        for domain in &self.domains {
+            let url = format!(
+                "{}/ajax/v2/episode/servers?episodeId={}",
+                domain, episode_id
+            );
+
+            match get_ajax_curl(&url).await {
+                Ok(curl_string) => {
+                    curl = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string: String = anirust_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+
+        let episode_no = document
+            .select(&EPISODE_NO_SELECTOR)
+            .next()
+            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .unwrap_or_default();
+        let sub = extract_episode_servers(&document, &EPISODE_DUB_SELECTOR);
+        let dub = extract_episode_servers(&document, &EPISODE_SUB_SELECTOR);
+
+        Ok(ServerInfo {
+            episode_no,
+            sub,
+            dub,
         })
     }
 }
@@ -1218,50 +1237,78 @@ fn extract_anime_seasons(document: &Html, selector: &Selector) -> Vec<AnimeSeaso
         .collect()
 }
 
-// fn extract_anime_episode(document: &Html, selector: &Selector) -> Vec<AnimeEpisode> {
-//     document
-//         .select(selector)
-//         .filter_map(|element| {
-//             // println!("{:?}", element);
-//             let id = element
-//                 .value()
-//                 .attr("href")
-//                 .map(|s| s.trim_start_matches('/').to_string())
-//                 .unwrap_or_default()
-//                 .split('/')
-//                 .last()
-//                 .unwrap_or_default()
-//                 .to_string();
-//
-//             if id.is_empty() {
-//                 return None;
-//             }
-//
-//             let title = element
-//                 .value()
-//                 .attr("title")
-//                 .map(|e| e.trim().to_string())
-//                 .unwrap_or_default();
-//
-//             let episode_no = id
-//                 .split('=')
-//                 .last()
-//                 .unwrap_or_default()
-//                 .parse::<u32>()
-//                 .ok()
-//                 .unwrap_or_default();
-//
-//             let is_filler = element.has_class("ssl-item-filler");
-//
-//             Some(AnimeEpisode {
-//                 id,
-//                 title,
-//                 episode_no,
-//                 is_filler,
-//             })
-//         })
-//         .collect()
-// }
+fn extract_anime_episode(document: &Html, selector: &Selector) -> Vec<AnimeEpisode> {
+    document
+        .select(selector)
+        .filter_map(|element| {
+            let id = element
+                .value()
+                .attr("href")
+                .map(|s| s.trim_start_matches('/').to_string())
+                .unwrap_or_default()
+                .split('/')
+                .last()
+                .unwrap_or_default()
+                .to_string();
+
+            if id.is_empty() {
+                return None;
+            }
+
+            let title = element
+                .value()
+                .attr("title")
+                .map(|e| e.trim().to_string())
+                .unwrap_or_default();
+
+            let episode_no = id
+                .split('=')
+                .last()
+                .unwrap_or_default()
+                .parse::<u32>()
+                .ok()
+                .unwrap_or_default();
+
+            let is_filler = element.has_class("ssl-item-filler");
+
+            Some(AnimeEpisode {
+                id,
+                title,
+                episode_no,
+                is_filler,
+            })
+        })
+        .collect()
+}
+
+fn extract_episode_servers(document: &Html, selector: &Selector) -> Vec<Server> {
+    document
+        .select(selector)
+        .map(|element| {
+            let server_name = element
+                .select(&Selector::parse("a").unwrap())
+                .next()
+                .map(|e| {
+                    e.text()
+                        .collect::<String>()
+                        .to_lowercase()
+                        .trim()
+                        .to_string()
+                })
+                .unwrap_or_default();
+
+            let server_id = element
+                .attr("data-server-id")
+                .and_then(|id| id.trim().parse::<u32>().ok())
+                .unwrap_or_default();
+
+            Server {
+                server_name,
+                server_id,
+            }
+        })
+        .collect()
+}
 
 fn extract_genres(document: &Html, selector: &Selector) -> Vec<String> {
     document
