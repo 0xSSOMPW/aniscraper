@@ -6,7 +6,12 @@ use crate::{
 use brotli::Decompressor;
 use core::fmt;
 use flate2::read::{GzDecoder, ZlibDecoder};
-use reqwest::header;
+use http_body_util::{BodyExt, Empty};
+use hyper::body::Bytes;
+use hyper_tls::HttpsConnector;
+use hyper_util::rt::TokioExecutor;
+use reqwest::{header, Url};
+use serde_json::Value;
 use std::error::Error;
 use std::io::Read;
 use std::time::Duration;
@@ -103,4 +108,39 @@ pub fn anirust_error_vec_to_string(error_vec: Vec<Option<AniRustError>>) -> Stri
         .filter_map(|opt_error| opt_error.as_ref().map(|e| e.to_string()))
         .collect::<Vec<String>>()
         .join(", ")
+}
+
+pub async fn get_ajax_curl(url: &str) -> Result<String, AniRustError> {
+    // Create an HTTPS connector
+    let https = HttpsConnector::new();
+    // Create an HTTP client
+    let client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+        .build::<_, Empty<Bytes>>(https);
+
+    // Define the URL
+    let url = url.parse().unwrap_or_default();
+
+    // Make the GET request
+    let res = client
+        .get(url)
+        .await
+        .unwrap()
+        .map_err(|_| AniRustError::UnknownError("hyper client failed".to_string()));
+
+    // Collect the response body
+    let body = res.collect().await?;
+    let body_bytes = body.to_bytes();
+
+    // Convert body bytes to a UTF-8 string
+    let body_string = String::from_utf8(body_bytes.to_vec()).unwrap_or_default();
+
+    // Parse the string as JSON
+    let json_value = serde_json::from_str::<Value>(&body_string).unwrap_or_default();
+
+    match json_value.get("html") {
+        Some(data) => {
+            Ok(serde_json::from_str::<String>(data.to_string().as_str()).unwrap_or_default())
+        }
+        None => Ok(String::new()),
+    }
 }
