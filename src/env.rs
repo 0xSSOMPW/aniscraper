@@ -84,6 +84,7 @@ impl SecretConfig {
         match error {
             AniRustError::ReqwestError(_) => self.reqwest_error_webhook.clone(),
             AniRustError::HyperError(_) => self.reqwest_error_webhook.clone(),
+            AniRustError::RegexError(_) => self.utils_error_webhook.clone(),
             AniRustError::NoProxiesAvailable => self.no_proxies_available_error_webhook.clone(),
             AniRustError::FailedToFetchAfterRetries => {
                 self.failed_to_fetch_after_retries_error_webhook.clone()

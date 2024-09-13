@@ -11,7 +11,10 @@ use crate::env::EnvVar;
 pub enum AniRustError {
     /// Reqwest error
     ReqwestError(reqwest::Error),
+    /// Hyper error
     HyperError(hyper::Error),
+    /// Regex error
+    RegexError(regex::Error),
     /// No Proxies available error
     NoProxiesAvailable,
     /// Failed to fetch even after multiple tries error
@@ -29,7 +32,8 @@ impl fmt::Display for AniRustError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AniRustError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
-            AniRustError::HyperError(err) => write!(f, "Reqwest error: {}", err),
+            AniRustError::HyperError(err) => write!(f, "Hyper error: {}", err),
+            AniRustError::RegexError(err) => write!(f, "Regex error: {}", err),
             AniRustError::NoProxiesAvailable => write!(f, "No proxies available"),
             AniRustError::FailedToFetchAfterRetries => write!(f, "Failed to fetch after retries"),
             AniRustError::ParseIntError(err) => write!(f, "Failed to parse int error: {}", err),
@@ -46,9 +50,17 @@ impl From<reqwest::Error> for AniRustError {
     }
 }
 
+// Implement From trait to convert hyper::Error to AniRustError
 impl From<hyper::Error> for AniRustError {
     fn from(err: hyper::Error) -> Self {
         AniRustError::HyperError(err)
+    }
+}
+
+// Implement From trait to convert regex::Error to AniRustError
+impl From<regex::Error> for AniRustError {
+    fn from(err: regex::Error) -> Self {
+        AniRustError::RegexError(err)
     }
 }
 
@@ -65,6 +77,7 @@ impl StdError for AniRustError {
         match self {
             AniRustError::ReqwestError(err) => Some(err),
             AniRustError::HyperError(err) => Some(err),
+            AniRustError::RegexError(err) => Some(err),
             AniRustError::NoProxiesAvailable => None,
             AniRustError::FailedToFetchAfterRetries => None,
             AniRustError::ParseIntError(err) => Some(err),
@@ -85,7 +98,9 @@ impl AniRustError {
             AniRustError::FailedToFetchAfterRetries => {
                 EnvVar::FAILED_TO_FETCH_AFTER_RETRIES_ERROR_WEBHOOK.get_config()
             }
-            AniRustError::ParseIntError(_) => EnvVar::UTILS_ERROR_WEBHOOK.get_config(),
+            AniRustError::ParseIntError(_) | AniRustError::RegexError(_) => {
+                EnvVar::UTILS_ERROR_WEBHOOK.get_config()
+            }
             AniRustError::NoDomainExists(_) => String::new(),
             AniRustError::UnknownError(_) => EnvVar::UNKNOWN_ERROR_WEBHOOK.get_config(),
         }
