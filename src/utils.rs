@@ -6,10 +6,12 @@ use crate::{
 use brotli::Decompressor;
 use core::fmt;
 use flate2::read::{GzDecoder, ZlibDecoder};
+use hex::FromHexError;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use hyper_tls::HttpsConnector;
 use hyper_util::rt::TokioExecutor;
+use openssl::symm::{Cipher, Crypter, Mode};
 use reqwest::header;
 use serde_json::Value;
 use std::io::Read;
@@ -160,4 +162,95 @@ pub fn substring_before(str: &str, to_find: &str) -> String {
         Some(i) => str[..i].to_string(),
         None => String::new(),
     }
+}
+
+// Encrypts a plaintext message using AES-256 in CBC (Cipher Block Chaining) mode.
+// //
+// // # Arguments
+// //
+// // * `iv` - An initialization vector (IV) used to provide the starting state for encryption.
+// Must be 16 bytes long.
+// // * `key` - A secret key used to perform encryption. Must be 32 bytes long for AES-256.
+// // * `text` - The plaintext message to be encrypted, represented as a byte slice.
+// //
+// // # Returns
+// //
+// // Returns a `Vec<u8>` containing the encrypted ciphertext.
+// //
+// // # Example
+// //
+// // ```rust
+// // use aes::encrypt_aes_256_cbc;
+// // let iv = b"1234567890123456";
+// // let key = b"01234567890123456789012345678901";
+// // let text = b"Hello, world!";
+// // let ciphertext = encrypt_aes_256_cbc(iv, key, text);
+// // assert_eq!(ciphertext, [197, 221, 61, 37, 184, 139, 38, 189, 182, 53, 144, 45, 170, 182, 220,
+// 210, 64, 155, 36, 239, 138, 38, 33, 48, 25, 101, 160, 99, 8, 24, 111, 137]);
+// // ```
+// //
+// // # Errors
+// //
+// // This function will panic if the initialization vector or key lengths are incorrect.
+pub fn encrypt_aes_256_cbc(iv: &[u8], key: &[u8], text: &[u8]) -> Vec<u8> {
+    let cipher = Cipher::aes_256_cbc();
+    let mut encrypter = Crypter::new(cipher, Mode::Encrypt, key, Some(iv)).unwrap();
+
+    let block_size = cipher.block_size();
+    let mut encrypted_data = vec![0; text.len() + block_size];
+    let count = encrypter
+        .update(text, &mut encrypted_data)
+        .unwrap_or_default();
+    let rest = encrypter
+        .finalize(&mut encrypted_data[count..])
+        .unwrap_or_default();
+    encrypted_data.truncate(count + rest);
+
+    encrypted_data
+}
+
+// Decrypts an AES-256 encrypted message using CBC (Cipher Block Chaining) mode.
+// //
+// // # Arguments
+// //
+// // * `iv` - An initialization vector (IV) used during the encryption process. Must be 16 bytes
+// long.
+// // * `key` - A secret key used to perform decryption. Must be 32 bytes long for AES-256.
+// // * `encrypted_data` - The ciphertext message to be decrypted, represented as a byte slice.
+// //
+// // # Returns
+// //
+// // Returns a `Vec<u8>`
+// //
+// // # Example
+// //
+// // ```rust
+// // use aes::decrypt_aes_256_cbc;
+// // use hex::FromHexError;
+// // let iv = b"1234567890123456";
+// // let key = b"01234567890123456789012345678901";
+// // let ciphertext = [202, 234, 210, 161, 130, 10, 237, 118, 76, 66, 52, 178, 12, 8, 2, 241];
+// // let plaintext = decrypt_aes_256_cbc(iv, key, &ciphertext).unwrap();
+// // assert_eq!(plaintext, b"Hello, world!");
+// // ```
+// //
+// // # Errors
+// //
+// // Returns an error if decryption fails, for example, due to incorrect key or initialization
+// vector.
+pub fn decrypt_aes_256_cbc(iv: &[u8], key: &[u8], encrypted_data: &[u8]) -> Vec<u8> {
+    let cipher = Cipher::aes_256_cbc();
+    let mut decrypter = Crypter::new(cipher, Mode::Decrypt, key, Some(iv)).unwrap();
+
+    let block_size = cipher.block_size();
+    let mut decrypted_data = vec![0; encrypted_data.len() + block_size];
+    let count = decrypter
+        .update(encrypted_data, &mut decrypted_data)
+        .unwrap_or_default();
+    let rest = decrypter
+        .finalize(&mut decrypted_data[count..])
+        .unwrap_or_default();
+    decrypted_data.truncate(count + rest);
+
+    decrypted_data
 }
