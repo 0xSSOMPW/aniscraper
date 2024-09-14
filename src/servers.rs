@@ -1,9 +1,15 @@
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{error::AniRustError, proxy::Proxy, utils::get_curl};
+use crate::{
+    error::AniRustError,
+    proxy::Proxy,
+    utils::{decrypt_aes_256_cbc, get_curl},
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Track {
     pub file: String,
     pub kind: String,
@@ -11,16 +17,19 @@ pub struct Track {
     pub default: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IntroOutro {
     pub start: u32,
     pub end: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UnencryptedSrc {
     pub file: String,
     pub src_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExtractedSrc {
     pub sources: Vec<UnencryptedSrc>,
     pub tracks: Vec<Track>,
@@ -30,6 +39,7 @@ pub struct ExtractedSrc {
     pub server: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExtractedData {
     pub intro: IntroOutro,
     pub outro: IntroOutro,
@@ -37,8 +47,11 @@ pub struct ExtractedData {
     pub sources: Vec<Source>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Source {
+    #[serde(rename = "file")]
     pub url: String,
+    #[serde(rename = "type")]
     pub src_type: String,
 }
 
@@ -111,7 +124,10 @@ impl EpisodeType {
 pub struct MegaCloudServer;
 
 impl MegaCloudServer {
-    pub async fn extract(video_url: &str, proxies: &[Proxy]) -> Result<(), AniRustError> {
+    pub async fn extract(
+        video_url: &str,
+        proxies: &[Proxy],
+    ) -> Result<ExtractedData, AniRustError> {
         let mut encrypted_string = String::new();
         let video_id = video_url
             .split('/')
@@ -122,21 +138,37 @@ impl MegaCloudServer {
         let url = format!("{}{}", MEGACLOUD.sources, video_id);
 
         let curl = get_curl(&url, proxies).await?;
-        // // Parse the string as JSON
         let json_value = serde_json::from_str::<Value>(&curl).unwrap_or_default();
+
+        let is_encrypted = serde_json::from_value(json_value["encrypted"].clone()).unwrap_or(false);
+        let intro: IntroOutro = serde_json::from_value(json_value["intro"].clone()).unwrap();
+        let outro: IntroOutro = serde_json::from_value(json_value["outro"].clone()).unwrap();
+        let tracks: Vec<Track> = serde_json::from_value(json_value["tracks"].clone()).unwrap();
+
+        if !is_encrypted {
+            // If not encrypted, parse the sources directly as a JSON array
+            let sources: Vec<Source> =
+                serde_json::from_value(json_value["sources"].clone()).unwrap_or_else(|_| vec![]);
+
+            let extracted_data = ExtractedData {
+                intro,
+                outro,
+                tracks,
+                sources,
+            };
+            return Ok(extracted_data);
+        }
 
         if let Some(data) = json_value.get("sources") {
             encrypted_string =
                 serde_json::from_str::<String>(data.to_string().as_str()).unwrap_or_default();
         }
 
-        // Get the current time in milliseconds since UNIX_EPOCH
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
 
-        // Format the URL by concatenating the base URL with the current timestamp
         let base_url = "https://megacloud.tv/js/player/a/prod/e1-player.min.js?v=";
         let full_url = format!("{}{}", base_url, now);
 
@@ -147,9 +179,18 @@ impl MegaCloudServer {
                 "Can't find variables. Perhaps the extractor is outdated.".to_string(),
             ));
         }
-        println!("{:?}", get_secret(&encrypted_string, &variables));
+        let (secret, encrypted_source) = get_secret(&encrypted_string, &variables);
+        let decrypted = decrypt(&encrypted_source, &secret, None)?;
+        let sources: Vec<Source> = serde_json::from_str(&decrypted).unwrap_or_else(|_| vec![]);
 
-        Ok(())
+        let extracted_data = ExtractedData {
+            intro,
+            outro,
+            tracks,
+            sources,
+        };
+
+        Ok(extracted_sata)
     }
 }
 
@@ -217,4 +258,40 @@ fn get_secret(encrypted_string: &str, values: &Vec<(u32, u32)>) -> (String, Stri
         .collect();
 
     (secret, encrypted_source)
+}
+
+fn decrypt(
+    encrypted: &str,
+    key_or_secret: &str,
+    maybe_iv: Option<Vec<u8>>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let (key, nonce, contents) = if let Some(iv) = maybe_iv {
+        (
+            key_or_secret.as_bytes().to_vec(),
+            iv,
+            base64::decode(encrypted).unwrap_or_default(),
+        )
+    } else {
+        let cypher = base64::decode(encrypted).unwrap_or_default();
+        let salt = &cypher[8..16];
+        let password = [key_or_secret.as_bytes(), salt].concat();
+
+        let mut md5_hashes = Vec::new();
+        let mut digest = password.clone();
+        for _ in 0..3 {
+            let hash = md5::compute(&digest);
+            md5_hashes.push(hash.0.to_vec());
+            digest = [hash.0.to_vec(), password.clone()].concat();
+        }
+
+        let key = [&md5_hashes[0][..], &md5_hashes[1][..]].concat();
+        let nonce = md5_hashes[2][..].to_vec();
+        let contents = cypher[16..].to_vec();
+
+        (key, nonce, contents)
+    };
+
+    let decrypted = decrypt_aes_256_cbc(&nonce, &key, &contents);
+
+    Ok(String::from_utf8(decrypted)?)
 }
