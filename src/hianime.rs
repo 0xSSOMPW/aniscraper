@@ -8,6 +8,7 @@ use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     proxy::{load_proxies, Proxy},
+    servers::{AnimeServer, EpisodeType, MegaCloudServer},
     utils::{anirust_error_vec_to_string, get_ajax_curl, get_curl},
 };
 
@@ -223,6 +224,7 @@ pub struct AboutAnime {
 pub struct Server {
     pub server_name: String,
     pub server_id: u32,
+    pub data_id: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -487,7 +489,6 @@ impl HiAnimeRust {
         })
     }
 
-    // BUG: Not working, find another way to do it
     pub async fn scrape_episodes(&self, id: &str) -> Result<EpisodesInfo, AniRustError> {
         let mut error_vec = vec![];
         let mut curl = String::new();
@@ -496,7 +497,7 @@ impl HiAnimeRust {
         for domain in &self.domains {
             let url = format!("{}/ajax/v2/episode/list/{}", domain, anime_id);
 
-            match get_ajax_curl(&url).await {
+            match get_ajax_curl(&url, "html").await {
                 Ok(curl_string) => {
                     curl = curl_string;
                     break;
@@ -534,7 +535,7 @@ impl HiAnimeRust {
                 domain, episode_id
             );
 
-            match get_ajax_curl(&url).await {
+            match get_ajax_curl(&url, "html").await {
                 Ok(curl_string) => {
                     curl = curl_string;
                     break;
@@ -552,11 +553,14 @@ impl HiAnimeRust {
 
         let document = Html::parse_document(&curl);
 
-        let episode_no = document
+        let episode_str = document
             .select(&EPISODE_NO_SELECTOR)
             .next()
-            .and_then(|e| e.text().collect::<String>().parse::<u32>().ok())
+            .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_default();
+        let last_part = episode_str.split_whitespace().last().unwrap_or_default();
+
+        let episode_no = last_part.parse::<u32>().unwrap_or_default();
         let sub = extract_episode_servers(&document, &EPISODE_DUB_SELECTOR);
         let dub = extract_episode_servers(&document, &EPISODE_SUB_SELECTOR);
 
@@ -565,6 +569,45 @@ impl HiAnimeRust {
             sub,
             dub,
         })
+    }
+
+    pub async fn scrape_episode_server_source(
+        &self,
+        id: &str,
+        episode_type: EpisodeType,
+        anime_server: Option<AnimeServer>,
+    ) -> Result<(), AniRustError> {
+        let server_list = self.scrape_servers(id).await?;
+        let mut error_vec = vec![];
+        let mut link = String::new();
+        let mut server_id: u32 = 0;
+
+        match episode_type {
+            EpisodeType::Dub => update_server_id(&mut server_id, server_list.dub, anime_server),
+            _ => update_server_id(&mut server_id, server_list.sub, anime_server),
+        }
+
+        for domain in &self.domains {
+            let url = format!("{}/ajax/v2/episode/sources?id={}", domain, server_id);
+
+            match get_ajax_curl(&url, "link").await {
+                Ok(curl_string) => {
+                    link = curl_string;
+                    break;
+                }
+                Err(e) => {
+                    error_vec.push(Some(e));
+                }
+            }
+        }
+
+        if link.is_empty() {
+            let error_string: String = anirust_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+        println!("{:?}", MegaCloudServer::extract(&link, &self.proxies).await);
+
+        Ok(())
     }
 }
 
@@ -1297,6 +1340,11 @@ fn extract_episode_servers(document: &Html, selector: &Selector) -> Vec<Server> 
                 })
                 .unwrap_or_default();
 
+            let data_id = element
+                .attr("data-id")
+                .and_then(|id| id.trim().parse::<u32>().ok())
+                .unwrap_or_default();
+
             let server_id = element
                 .attr("data-server-id")
                 .and_then(|id| id.trim().parse::<u32>().ok())
@@ -1305,6 +1353,7 @@ fn extract_episode_servers(document: &Html, selector: &Selector) -> Vec<Server> 
             Server {
                 server_name,
                 server_id,
+                data_id,
             }
         })
         .collect()
@@ -1342,4 +1391,16 @@ fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
     // Release the lock.
     drop(secret_lock);
     secret_clone
+}
+
+fn update_server_id(server_id: &mut u32, servers: Vec<Server>, anime_server: Option<AnimeServer>) {
+    let anime_server = anime_server.unwrap_or(AnimeServer::Vidstreaming);
+
+    for server in servers {
+        println!("{} - {}", server.server_name, anime_server.as_str());
+        if server.server_name == anime_server.as_str() {
+            *server_id = server.server_id;
+            return;
+        }
+    }
 }

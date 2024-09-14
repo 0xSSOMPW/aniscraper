@@ -10,15 +10,15 @@ use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use hyper_tls::HttpsConnector;
 use hyper_util::rt::TokioExecutor;
-use reqwest::{header, Url};
+use reqwest::header;
 use serde_json::Value;
-use std::error::Error;
 use std::io::Read;
 use std::time::Duration;
 
 /// Fetches data from the specified URL.
 ///
 /// Returns the HTML content of the page as a string.
+/// TODO: find a way to do it using hyper , to reduce no of dependencies
 pub async fn get_curl(url: &str, proxies: &[Proxy]) -> Result<String, AniRustError> {
     let max_attempts = parse_usize(&EnvVar::MAX_RETRIES_ATTEMPTS.get_config()).unwrap_or(50);
     let timeout_duration = Duration::from_secs(5);
@@ -110,7 +110,8 @@ pub fn anirust_error_vec_to_string(error_vec: Vec<Option<AniRustError>>) -> Stri
         .join(", ")
 }
 
-pub async fn get_ajax_curl(url: &str) -> Result<String, AniRustError> {
+// TODO: find a way to impl proxies
+pub async fn get_ajax_curl(url: &str, field: &str) -> Result<String, AniRustError> {
     // Create an HTTPS connector
     let https = HttpsConnector::new();
     // Create an HTTP client
@@ -137,10 +138,26 @@ pub async fn get_ajax_curl(url: &str) -> Result<String, AniRustError> {
     // Parse the string as JSON
     let json_value = serde_json::from_str::<Value>(&body_string).unwrap_or_default();
 
-    match json_value.get("html") {
+    match json_value.get(field) {
         Some(data) => {
             Ok(serde_json::from_str::<String>(data.to_string().as_str()).unwrap_or_default())
         }
         None => Ok(String::new()),
+    }
+}
+
+pub fn substring_after(str: &str, to_find: &str) -> String {
+    let index = str.find(to_find);
+    match index {
+        Some(i) => str[i + to_find.len()..].to_string(),
+        None => String::new(),
+    }
+}
+
+pub fn substring_before(str: &str, to_find: &str) -> String {
+    let index = str.find(to_find);
+    match index {
+        Some(i) => str[..i].to_string(),
+        None => String::new(),
     }
 }
