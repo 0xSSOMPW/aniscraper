@@ -128,69 +128,28 @@ impl MegaCloudServer {
         video_url: &str,
         proxies: &[Proxy],
     ) -> Result<ExtractedData, AniRustError> {
-        let mut encrypted_string = String::new();
-        let video_id = video_url
-            .split('/')
-            .last()
-            .and_then(|s| s.split('?').next())
-            .unwrap_or_default();
+        let video_id = extract_video_id(video_url);
+        let json_data = fetch_initial_data(&video_id, proxies).await?;
 
-        let url = format!("{}{}", MEGACLOUD.sources, video_id);
+        let is_encrypted = json_data["encrypted"].as_bool().unwrap_or(false);
+        let intro: IntroOutro = parse_json_field(&json_data, "intro")?;
+        let outro: IntroOutro = parse_json_field(&json_data, "outro")?;
+        let tracks: Vec<Track> = parse_json_field(&json_data, "tracks")?;
 
-        let curl = get_curl(&url, proxies).await?;
-        let json_value = serde_json::from_str::<Value>(&curl).unwrap_or_default();
+        let sources = if is_encrypted {
+            let encrypted_string = extract_encrypted_string(&json_data);
+            let decrypted_sources = decrypt_sources(&encrypted_string, proxies).await?;
+            parse_sources(&decrypted_sources)?
+        } else {
+            parse_json_field(&json_data, "sources")?
+        };
 
-        let is_encrypted = serde_json::from_value(json_value["encrypted"].clone()).unwrap_or(false);
-        let intro: IntroOutro = serde_json::from_value(json_value["intro"].clone()).unwrap();
-        let outro: IntroOutro = serde_json::from_value(json_value["outro"].clone()).unwrap();
-        let tracks: Vec<Track> = serde_json::from_value(json_value["tracks"].clone()).unwrap();
-
-        if !is_encrypted {
-            // If not encrypted, parse the sources directly as a JSON array
-            let sources: Vec<Source> =
-                serde_json::from_value(json_value["sources"].clone()).unwrap_or_else(|_| vec![]);
-
-            let extracted_data = ExtractedData {
-                intro,
-                outro,
-                tracks,
-                sources,
-            };
-            return Ok(extracted_data);
-        }
-
-        if let Some(data) = json_value.get("sources") {
-            encrypted_string =
-                serde_json::from_str::<String>(data.to_string().as_str()).unwrap_or_default();
-        }
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis();
-
-        let base_url = "https://megacloud.tv/js/player/a/prod/e1-player.min.js?v=";
-        let full_url = format!("{}{}", base_url, now);
-
-        let curl = get_curl(&full_url, proxies).await?;
-        let variables = extract_variables(&curl)?;
-        if variables.is_empty() {
-            return Err(AniRustError::UnknownError(
-                "Can't find variables. Perhaps the extractor is outdated.".to_string(),
-            ));
-        }
-        let (secret, encrypted_source) = get_secret(&encrypted_string, &variables);
-        let decrypted = decrypt(&encrypted_source, &secret, None)?;
-        let sources: Vec<Source> = serde_json::from_str(&decrypted).unwrap_or_else(|_| vec![]);
-
-        let extracted_data = ExtractedData {
+        Ok(ExtractedData {
             intro,
             outro,
             tracks,
             sources,
-        };
-
-        Ok(extracted_sata)
+        })
     }
 }
 
@@ -294,4 +253,67 @@ fn decrypt(
     let decrypted = decrypt_aes_256_cbc(&nonce, &key, &contents);
 
     Ok(String::from_utf8(decrypted)?)
+}
+
+fn extract_video_id(video_url: &str) -> String {
+    video_url
+        .split('/')
+        .last()
+        .and_then(|s| s.split('?').next())
+        .unwrap_or_default()
+        .to_string()
+}
+
+async fn fetch_initial_data(video_id: &str, proxies: &[Proxy]) -> Result<Value, AniRustError> {
+    let url = format!("{}{}", MEGACLOUD.sources, video_id);
+    let response = get_curl(&url, proxies).await?;
+    serde_json::from_str(&response).map_err(|e| AniRustError::UnknownError(e.to_string()))
+}
+
+fn parse_json_field<T: serde::de::DeserializeOwned>(
+    json: &Value,
+    field: &str,
+) -> Result<T, AniRustError> {
+    serde_json::from_value(json[field].clone())
+        .map_err(|e| AniRustError::UnknownError(format!("Failed to parse {}: {}", field, e)))
+}
+
+fn extract_encrypted_string(json: &Value) -> String {
+    if let Some(data) = json.get("sources") {
+        serde_json::from_str::<String>(data.to_string().as_str()).unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+async fn decrypt_sources(
+    encrypted_string: &str,
+    proxies: &[Proxy],
+) -> Result<String, AniRustError> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| AniRustError::UnknownError(e.to_string()))?
+        .as_millis();
+
+    let full_url = format!(
+        "https://megacloud.tv/js/player/a/prod/e1-player.min.js?v={}",
+        now
+    );
+    let script = get_curl(&full_url, proxies).await?;
+
+    let variables = extract_variables(&script)?;
+    if variables.is_empty() {
+        return Err(AniRustError::UnknownError(
+            "Can't find variables. Perhaps the extractor is outdated.".to_string(),
+        ));
+    }
+
+    let (secret, encrypted_source) = get_secret(encrypted_string, &variables);
+    let decrypted = decrypt(&encrypted_source, &secret, None)?;
+    Ok(decrypted)
+}
+
+fn parse_sources(decrypted: &str) -> Result<Vec<Source>, AniRustError> {
+    serde_json::from_str(decrypted)
+        .map_err(|e| AniRustError::UnknownError(format!("Failed to parse sources: {}", e)))
 }
