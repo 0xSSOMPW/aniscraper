@@ -23,6 +23,12 @@ pub struct IntroOutro {
     pub end: u32,
 }
 
+impl Default for IntroOutro {
+    fn default() -> Self {
+        IntroOutro { start: 0, end: 0 }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnencryptedSrc {
     pub file: String,
@@ -132,8 +138,8 @@ impl MegaCloudServer {
         let json_data = fetch_initial_data(&video_id, proxies).await?;
 
         let is_encrypted = json_data["encrypted"].as_bool().unwrap_or(false);
-        let intro: IntroOutro = parse_json_field(&json_data, "intro")?;
-        let outro: IntroOutro = parse_json_field(&json_data, "outro")?;
+        let intro: IntroOutro = parse_json_field(&json_data, "intro").unwrap_or_default();
+        let outro: IntroOutro = parse_json_field(&json_data, "outro").unwrap_or_default();
         let tracks: Vec<Track> = parse_json_field(&json_data, "tracks")?;
 
         let sources = if is_encrypted {
