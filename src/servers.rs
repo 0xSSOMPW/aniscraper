@@ -30,23 +30,13 @@ impl Default for IntroOutro {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct UnencryptedSrc {
+pub struct MegaCloudUnencryptedSrc {
     pub file: String,
     pub src_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExtractedSrc {
-    pub sources: Vec<UnencryptedSrc>,
-    pub tracks: Vec<Track>,
-    pub encrypted: bool,
-    pub intro: IntroOutro,
-    pub outro: IntroOutro,
-    pub server: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ExtractedData {
+pub struct MegaCloudExtractedData {
     pub intro: IntroOutro,
     pub outro: IntroOutro,
     pub tracks: Vec<Track>,
@@ -133,7 +123,7 @@ impl MegaCloudServer {
     pub async fn extract(
         video_url: &str,
         proxies: &[Proxy],
-    ) -> Result<ExtractedData, AniRustError> {
+    ) -> Result<MegaCloudExtractedData, AniRustError> {
         let video_id = extract_video_id(video_url);
         let json_data = fetch_initial_data(&video_id, proxies).await?;
 
@@ -150,7 +140,7 @@ impl MegaCloudServer {
             parse_json_field(&json_data, "sources")?
         };
 
-        Ok(ExtractedData {
+        Ok(MegaCloudExtractedData {
             intro,
             outro,
             tracks,

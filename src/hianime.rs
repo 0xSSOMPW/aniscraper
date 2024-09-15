@@ -8,7 +8,7 @@ use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     proxy::{load_proxies, Proxy},
-    servers::{AnimeServer, EpisodeType, MegaCloudServer},
+    servers::{AnimeServer, EpisodeType, MegaCloudExtractedData, MegaCloudServer},
     utils::{anirust_error_vec_to_string, get_ajax_curl, get_curl},
 };
 
@@ -576,7 +576,7 @@ impl HiAnimeRust {
         id: &str,
         episode_type: EpisodeType,
         anime_server: Option<AnimeServer>,
-    ) -> Result<(), AniRustError> {
+    ) -> Result<MegaCloudExtractedData, AniRustError> {
         let server_list = self.scrape_servers(id).await?;
         let mut error_vec = vec![];
         let mut link = String::new();
@@ -605,9 +605,17 @@ impl HiAnimeRust {
             let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
-        println!("{:?}", MegaCloudServer::extract(&link, &self.proxies).await);
+        // let server_info = MegaCloudServer::extract(&link, &self.proxies).await?;
 
-        Ok(())
+        let server_info = match server_id {
+            3 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            4 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            5 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            1 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            _ => MegaCloudServer::extract(&link, &self.proxies).await?,
+        };
+
+        Ok(server_info)
     }
 }
 
