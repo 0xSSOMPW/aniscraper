@@ -1,11 +1,12 @@
 use regex::Regex;
+use scraper::Html;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
     error::AniRustError,
     proxy::Proxy,
-    utils::{decrypt_aes_256_cbc, get_curl},
+    utils::{anirust_error_vec_to_string, decrypt_aes_256_cbc, get_curl},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -41,6 +42,12 @@ pub struct MegaCloudExtractedData {
     pub outro: IntroOutro,
     pub tracks: Vec<Track>,
     pub sources: Vec<Source>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamTapeExtractedData {
+    pub url: String,
+    pub is_m3u8: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,15 +124,22 @@ impl EpisodeType {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ServerExtractedInfo {
+    MegaCloud(MegaCloudExtractedData),
+    StreamTape(StreamTapeExtractedData),
+}
+
 pub struct MegaCloudServer;
 
 impl MegaCloudServer {
     pub async fn extract(
         video_url: &str,
         proxies: &[Proxy],
-    ) -> Result<MegaCloudExtractedData, AniRustError> {
+    ) -> Result<ServerExtractedInfo, AniRustError> {
         let video_id = extract_video_id(video_url);
-        let json_data = fetch_initial_data(&video_id, proxies).await?;
+        let url = format!("{}{}", MEGACLOUD.sources, video_id);
+        let json_data = fetch_initial_data(&url, proxies).await?;
 
         let is_encrypted = json_data["encrypted"].as_bool().unwrap_or(false);
         let intro: IntroOutro = parse_json_field(&json_data, "intro").unwrap_or_default();
@@ -140,12 +154,62 @@ impl MegaCloudServer {
             parse_json_field(&json_data, "sources")?
         };
 
-        Ok(MegaCloudExtractedData {
+        Ok(ServerExtractedInfo::MegaCloud(MegaCloudExtractedData {
             intro,
             outro,
             tracks,
             sources,
-        })
+        }))
+    }
+}
+
+pub struct StreamTapeServer;
+
+impl StreamTapeServer {
+    pub async fn extract(
+        video_url: &str,
+        proxies: &[Proxy],
+    ) -> Result<ServerExtractedInfo, AniRustError> {
+        let mut error_vec = vec![];
+        let mut curl = String::new();
+
+        match get_curl(video_url, proxies).await {
+            Ok(curl_string) => {
+                curl = curl_string;
+            }
+            Err(e) => {
+                error_vec.push(Some(e));
+            }
+        }
+
+        if curl.is_empty() {
+            let error_string = anirust_error_vec_to_string(error_vec);
+            return Err(AniRustError::UnknownError(error_string));
+        }
+
+        let document = Html::parse_document(&curl);
+
+        let re = Regex::new(r"robotlink'\).innerHTML = (.*)'").unwrap();
+        let html = document.root_element().html();
+
+        if let Some(captures) = re.captures(&html) {
+            if let Some(matched) = captures.get(1) {
+                let parts: Vec<&str> = matched.as_str().split("+ ('").collect();
+                if parts.len() == 2 {
+                    let fh = parts[0].replace('\'', "");
+                    let mut sh = parts[1].to_string();
+                    sh = sh[3..].to_string();
+
+                    let url = format!("https:{}{}", fh, sh);
+                    return Ok(ServerExtractedInfo::StreamTape(StreamTapeExtractedData {
+                        url: url.clone(),
+                        is_m3u8: url.contains(".m3u8"),
+                    }));
+                }
+            }
+        }
+
+        Err(AniRustError::FailedToFetchAfterRetries)
     }
 }
 
@@ -260,9 +324,8 @@ fn extract_video_id(video_url: &str) -> String {
         .to_string()
 }
 
-async fn fetch_initial_data(video_id: &str, proxies: &[Proxy]) -> Result<Value, AniRustError> {
-    let url = format!("{}{}", MEGACLOUD.sources, video_id);
-    let response = get_curl(&url, proxies).await?;
+async fn fetch_initial_data(url: &str, proxies: &[Proxy]) -> Result<Value, AniRustError> {
+    let response = get_curl(url, proxies).await?;
     serde_json::from_str(&response).map_err(|e| AniRustError::UnknownError(e.to_string()))
 }
 
