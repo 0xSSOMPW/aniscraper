@@ -8,7 +8,7 @@ use crate::{
     env::{self, EnvVar, SecretConfig},
     error::AniRustError,
     proxy::{load_proxies, Proxy},
-    servers::{AnimeServer, EpisodeType, MegaCloudServer},
+    servers::{AnimeServer, EpisodeType, MegaCloudServer, ServerExtractedInfo, StreamTapeServer},
     utils::{anirust_error_vec_to_string, get_ajax_curl, get_curl},
 };
 
@@ -576,19 +576,24 @@ impl HiAnimeRust {
         id: &str,
         episode_type: EpisodeType,
         anime_server: Option<AnimeServer>,
-    ) -> Result<(), AniRustError> {
+    ) -> Result<ServerExtractedInfo, AniRustError> {
         let server_list = self.scrape_servers(id).await?;
         let mut error_vec = vec![];
         let mut link = String::new();
+
         let mut server_id: u32 = 0;
+        let mut data_id: u32 = 0;
 
         match episode_type {
-            EpisodeType::Dub => update_server_id(&mut server_id, server_list.dub, anime_server),
-            _ => update_server_id(&mut server_id, server_list.sub, anime_server),
+            EpisodeType::Dub => {
+                update_server_id(&mut server_id, &mut data_id, server_list.dub, anime_server)
+            }
+            _ => update_server_id(&mut server_id, &mut data_id, server_list.sub, anime_server),
         }
 
         for domain in &self.domains {
-            let url = format!("{}/ajax/v2/episode/sources?id={}", domain, server_id);
+            let url = format!("{}/ajax/v2/episode/sources?id={}", domain, data_id);
+            println!("{:?}", url);
 
             match get_ajax_curl(&url, "link").await {
                 Ok(curl_string) => {
@@ -605,9 +610,16 @@ impl HiAnimeRust {
             let error_string: String = anirust_error_vec_to_string(error_vec);
             return Err(AniRustError::UnknownError(error_string));
         }
-        println!("{:?}", MegaCloudServer::extract(&link, &self.proxies).await);
 
-        Ok(())
+        let server_info = match server_id {
+            3 => StreamTapeServer::extract(&link, &self.proxies).await?,
+            4 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            5 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            1 => MegaCloudServer::extract(&link, &self.proxies).await?,
+            _ => MegaCloudServer::extract(&link, &self.proxies).await?,
+        };
+
+        Ok(server_info)
     }
 }
 
@@ -1393,13 +1405,19 @@ fn initialize_secret(secret: Option<SecretConfig>) -> Option<SecretConfig> {
     secret_clone
 }
 
-fn update_server_id(server_id: &mut u32, servers: Vec<Server>, anime_server: Option<AnimeServer>) {
+fn update_server_id(
+    server_id: &mut u32,
+    data_id: &mut u32,
+    servers: Vec<Server>,
+    anime_server: Option<AnimeServer>,
+) {
     let anime_server = anime_server.unwrap_or(AnimeServer::Vidstreaming);
 
     for server in servers {
         println!("{} - {}", server.server_name, anime_server.as_str());
         if server.server_name == anime_server.as_str() {
             *server_id = server.server_id;
+            *data_id = server.data_id;
             return;
         }
     }
