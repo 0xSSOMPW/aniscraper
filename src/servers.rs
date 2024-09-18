@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
     error::AniRustError,
     proxy::Proxy,
-    utils::{anirust_error_vec_to_string, decrypt_aes_256_cbc, get_curl},
+    utils::{anirust_error_vec_to_string, bytes_to_hex, decrypt_aes_256_cbc, get_curl},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -58,15 +58,24 @@ pub struct Source {
     pub src_type: String,
 }
 
-// Implement the MegaCloud struct
-pub struct MegaCloud {
+struct MegaCloud {
     pub script: &'static str,
     pub sources: &'static str,
 }
 
-pub const MEGACLOUD: MegaCloud = MegaCloud {
+const MEGACLOUD: MegaCloud = MegaCloud {
     script: "https://megacloud.tv/js/player/a/prod/e1-player.min.js?v=",
     sources: "https://megacloud.tv/embed-2/ajax/e-1/getSources?id=",
+};
+
+struct StreamSb {
+    pub host1: &'static str,
+    pub host2: &'static str,
+}
+
+const STREAMSB: StreamSb = StreamSb {
+    host1: "https://watchsb.com/sources50",
+    host2: "https://streamsss.net/sources16",
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -212,6 +221,22 @@ impl StreamTapeServer {
         Err(AniRustError::FailedToFetchAfterRetries)
     }
 }
+
+// BUG: this server has been shut down
+// pub struct StreamSBServer;
+//
+// impl StreamSBServer {
+//     pub async fn extract(
+//         video_url: &str,
+//         is_alt: Option<bool>,
+//         proxies: &[Proxy],
+//     ) -> Result<(), AniRustError> {
+//         let encoded_id = get_encoded_video_id(video_url);
+//         let hexed_id = bytes_to_hex(&encoded_id);
+//         let res = process_streamsb_url(is_alt, &hexed_id, proxies).await?;
+//         Ok(())
+//     }
+// }
 
 fn extract_variables(text: &str) -> Result<Vec<(u32, u32)>, AniRustError> {
     let regex = Regex::new(r"case\s*0x[0-9a-f]+:\s*\w+\s*=\s*(\w+)\s*,\s*\w+\s*=\s*(\w+);")?;
@@ -375,4 +400,42 @@ async fn decrypt_sources(
 fn parse_sources(decrypted: &str) -> Result<Vec<Source>, AniRustError> {
     serde_json::from_str(decrypted)
         .map_err(|e| AniRustError::UnknownError(format!("Failed to parse sources: {}", e)))
+}
+
+fn get_payload(hex: &str) -> String {
+    // `5363587530696d33443675687c7c{hex}7c7c433569475830474c497a65767c7c73747265616d7362`;
+    let payload = format!("566d337678566f743674494a7c7c{}7c7c346b6767586d6934774855537c7c73747265616d7362/6565417268755339773461447c7c346133383438333436313335376136323337373433383634376337633465366534393338373136643732373736343735373237613763376334363733353737303533366236333463353333363534366137633763373337343732363536313664373336327c7c6b586c3163614468645a47617c7c73747265616d7362", hex);
+
+    payload
+}
+
+fn get_encoded_video_id(video_url: &str) -> Vec<u8> {
+    let mut id = video_url
+        .split("/e/")
+        .last()
+        .unwrap_or_default()
+        .to_string();
+
+    if id.contains("html") {
+        id = id.split(".html").next().unwrap_or_default().to_string();
+    }
+
+    id.as_bytes().to_vec()
+}
+
+async fn process_streamsb_url(
+    is_alt: Option<bool>,
+    hexed_id: &str,
+    proxies: &[Proxy],
+) -> Result<String, AniRustError> {
+    let host = if matches!(is_alt, Some(true)) {
+        &STREAMSB.host2
+    } else {
+        &STREAMSB.host1
+    };
+
+    let url = format!("{}/{}", host, hexed_id);
+    let res = get_curl(&url, proxies).await?;
+
+    Ok(res)
 }
