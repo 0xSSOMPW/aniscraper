@@ -6,7 +6,6 @@ use crate::{
 use brotli::Decompressor;
 use core::fmt;
 use flate2::read::{GzDecoder, ZlibDecoder};
-use hex::FromHexError;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use hyper_tls::HttpsConnector;
@@ -253,4 +252,8 @@ pub fn decrypt_aes_256_cbc(iv: &[u8], key: &[u8], encrypted_data: &[u8]) -> Vec<
     decrypted_data.truncate(count + rest);
 
     decrypted_data
+}
+
+pub fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
