@@ -124,14 +124,22 @@ Once configured, you can use `aniscraper` in your project to start scraping with
 
 ```rust
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hianime = HiAnimeRust::new(None).await;
     
-    let hianime_home_info = hianime.scrape_home().await;
-    let hianime_about_anime_info = hianime.scrape_about_anime("one-piece-100").await;
-    let hianime_episodes_info = hianime.scrape_episodes("one-piece-100").await;
-    let hianime_search_query_info = hianime.scrape_search("jojo", 1).await;
-    let hianime_category_info = hianime.scrape_category("ova", 3).await;
+    let hianime_home_info = hianime.scrape_home().await?;
+    let hianime_about_anime_info = hianime.scrape_about_anime("one-piece-100").await?;
+    let hianime_atoz_list_info = hianime.scrape_atoz(2).await?;
+    let hianime_episodes_info = hianime.scrape_episodes("one-piece-100").await?;
+    let hianime_search_query_info = hianime.scrape_search("jojo", 1).await?;
+    let hianime_category_info = hianime.scrape_category("ova", 3).await?;
+    let hianime_episode_sources_info = hianime.scrape_servers("death-note-60?ep=1464").await?;
+    let hianime_episode_streaming_links = hianime
+                                              .scrape_episode_server_source(
+                                                  "death-note-60?ep=1464",
+                                                  aniscraper::servers::EpisodeType::Sub,
+                                                  Some(AnimeServer::Streamtape)
+                                              ).await?;
 }
 ```
 
