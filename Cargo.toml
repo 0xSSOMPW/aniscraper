@@ -1,6 +1,6 @@
 [package]
 name = "aniscraper"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 categories = ["web-programming", "parsing", "parser-implementations", "web-programming::http-client"]
 description = "Rust library designed for efficient web scraping and data extraction. It simplifies the process of fetching, parsing, and extracting data from websites."
