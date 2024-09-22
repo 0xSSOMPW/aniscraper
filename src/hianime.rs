@@ -561,8 +561,8 @@ impl HiAnimeRust {
         let last_part = episode_str.split_whitespace().last().unwrap_or_default();
 
         let episode_no = last_part.parse::<u32>().unwrap_or_default();
-        let sub = extract_episode_servers(&document, &EPISODE_DUB_SELECTOR);
-        let dub = extract_episode_servers(&document, &EPISODE_SUB_SELECTOR);
+        let sub = extract_episode_servers(&document, &EPISODE_SUB_SELECTOR);
+        let dub = extract_episode_servers(&document, &EPISODE_DUB_SELECTOR);
 
         Ok(ServerInfo {
             episode_no,
@@ -699,7 +699,11 @@ fn extract_spotlight_anime_data(document: &Html, selector: &Selector) -> Vec<Spo
                 .next()
                 .and_then(|e| e.value().attr("href"))
                 .map(|s| s.trim_start_matches('/').to_string())
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .split("/")
+                .last()
+                .unwrap_or_default()
+                .to_string();
 
             let title = element
                 .select(

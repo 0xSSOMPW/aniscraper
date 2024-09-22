@@ -10,7 +10,7 @@ use crate::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Track {
     pub file: String,
     pub kind: String,
@@ -18,7 +18,7 @@ pub struct Track {
     pub default: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IntroOutro {
     pub start: u32,
     pub end: u32,
@@ -30,13 +30,13 @@ impl Default for IntroOutro {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MegaCloudUnencryptedSrc {
     pub file: String,
     pub src_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MegaCloudExtractedData {
     pub intro: IntroOutro,
     pub outro: IntroOutro,
@@ -44,13 +44,13 @@ pub struct MegaCloudExtractedData {
     pub sources: Vec<Source>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamTapeExtractedData {
     pub url: String,
     pub is_m3u8: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Source {
     #[serde(rename = "file")]
     pub url: String,
@@ -133,7 +133,7 @@ impl EpisodeType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ServerExtractedInfo {
     MegaCloud(MegaCloudExtractedData),
     StreamTape(StreamTapeExtractedData),
