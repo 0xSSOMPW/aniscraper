@@ -22,7 +22,7 @@ To get started with `aniscraper`, first add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aniscraper = "0.1"  # Replace with the latest version
+aniscraper = "0.1.2"  # Replace with the latest version
 ```
 
 Or
