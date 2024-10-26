@@ -1320,13 +1320,11 @@ fn extract_anime_episode(document: &Html, selector: &Selector) -> Vec<AnimeEpiso
                 .map(|e| e.trim().to_string())
                 .unwrap_or_default();
 
-            let episode_no = id
-                .split('=')
-                .last()
-                .unwrap_or_default()
-                .parse::<u32>()
-                .ok()
-                .unwrap_or_default();
+            let episode_no = element
+                .value()
+                .attr("data-number")
+                .and_then(|e| e.trim().parse::<u32>().ok())
+                .unwrap_or(0);
 
             let is_filler = element.has_class("ssl-item-filler");
 
