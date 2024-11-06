@@ -114,6 +114,7 @@ impl AnimeServer {
 pub enum EpisodeType {
     Sub,
     Dub,
+    Raw,
 }
 
 impl EpisodeType {
@@ -121,6 +122,7 @@ impl EpisodeType {
         match s {
             "sub" => EpisodeType::Sub,
             "dub" => EpisodeType::Dub,
+            "raw" => EpisodeType::Raw,
             _ => EpisodeType::Sub,
         }
     }
@@ -129,6 +131,7 @@ impl EpisodeType {
         match self {
             EpisodeType::Sub => "sub",
             EpisodeType::Dub => "dub",
+            EpisodeType::Raw => "raw",
         }
     }
 }

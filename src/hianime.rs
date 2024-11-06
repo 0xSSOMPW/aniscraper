@@ -46,6 +46,7 @@ lazy_static! {
     static ref EPISODE_NO_SELECTOR: Selector = Selector::parse(".server-notice strong").unwrap();
     static ref EPISODE_SUB_SELECTOR: Selector = Selector::parse(".ps_-block.ps_-block-sub.servers-sub .ps__-list .server-item").unwrap();
     static ref EPISODE_DUB_SELECTOR: Selector = Selector::parse(".ps_-block.ps_-block-sub.servers-dub .ps__-list .server-item").unwrap();
+    static ref EPISODE_RAW_SELECTOR: Selector = Selector::parse(".ps_-block.ps_-block-sub.servers-raw .ps__-list .server-item").unwrap();
 }
 
 #[derive(Debug)]
@@ -232,6 +233,7 @@ pub struct ServerInfo {
     pub episode_no: u32,
     pub sub: Vec<Server>,
     pub dub: Vec<Server>,
+    pub raw: Vec<Server>,
 }
 
 trait HasClass {
@@ -563,11 +565,13 @@ impl HiAnimeRust {
         let episode_no = last_part.parse::<u32>().unwrap_or_default();
         let sub = extract_episode_servers(&document, &EPISODE_SUB_SELECTOR);
         let dub = extract_episode_servers(&document, &EPISODE_DUB_SELECTOR);
+        let raw = extract_episode_servers(&document, &EPISODE_RAW_SELECTOR);
 
         Ok(ServerInfo {
             episode_no,
             sub,
             dub,
+            raw,
         })
     }
 
@@ -587,6 +591,9 @@ impl HiAnimeRust {
         match episode_type {
             EpisodeType::Dub => {
                 update_server_id(&mut server_id, &mut data_id, server_list.dub, anime_server)
+            }
+            EpisodeType::Raw => {
+                update_server_id(&mut server_id, &mut data_id, server_list.raw, anime_server)
             }
             _ => update_server_id(&mut server_id, &mut data_id, server_list.sub, anime_server),
         }
